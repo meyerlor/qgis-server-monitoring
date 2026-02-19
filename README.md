@@ -136,7 +136,7 @@ For a production setup it is recommended to run the dashboard as a systemd servi
 ### Create a systemd service
 
 ```ini
-# /etc/systemd/system/qgis-monitoring.service
+# /etc/systemd/system/monitoring-dashboard.service
 [Unit]
 Description=QGIS Server Monitoring Dashboard
 After=network.target
@@ -155,7 +155,22 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now qgis-monitoring.service
+sudo systemctl enable --now monitoring-dashboard.service
+```
+
+#### Start / Stop / Restart
+
+```bash
+sudo systemctl stop monitoring-dashboard.service
+sudo systemctl start monitoring-dashboard.service
+sudo systemctl restart monitoring-dashboard.service
+```
+
+Check the service status and logs:
+
+```bash
+sudo systemctl status monitoring-dashboard.service
+sudo journalctl -u monitoring-dashboard.service -f
 ```
 
 ### Reverse proxy (Nginx)
