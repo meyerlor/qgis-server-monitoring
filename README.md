@@ -18,6 +18,8 @@ Real-time monitoring dashboard for QGIS Server instances. Collects system metric
 - **Log rotation handling** — Supports both `create` and `copytruncate` rotation methods
 - **Web-based dashboard** — Single-page UI with charts (Chart.js) and real-time updates (Socket.IO)
 
+> **Note:** Requests from the `admin` user and from users that are not logged in (`N/A`) are excluded from all aggregated statistics (performance trends, peak hours, project rankings, etc.). They will still appear in the raw Queries Log.
+
 ## Prerequisites
 
 ### 1. QGIS Server logging
