@@ -21,13 +21,19 @@ Real-time monitoring dashboard for QGIS Server instances. Collects system metric
 > **Note:** Requests from the `admin` user and from users that are not logged in (`N/A`) are excluded from all aggregated statistics (performance trends, peak hours, project rankings, etc.). They will still appear in the raw Queries Log.
 
 ## Screenshots from the Dashboard:
-Overview:
+**Overview:**
+
 <img width="1549" height="983" alt="grafik" src="https://github.com/user-attachments/assets/6211f58f-880e-4be8-8056-d7856ecd46c6" />
-Single requests / most active users + projects
+
+**Single requests / most active users + projects**
+
 <img width="945" height="1004" alt="grafik" src="https://github.com/user-attachments/assets/0410896b-af5e-4d19-9ed8-7be5554da2a1" />
-Deep performance analysis:
+
+**Deep performance analysis:**
+
 <img width="936" height="882" alt="grafik" src="https://github.com/user-attachments/assets/f9ebc3ba-e548-4536-9174-6f1302221b42" />
-Historical system data (CPU+RAM)
+
+**Historical system data (CPU+RAM):**
 <img width="1504" height="898" alt="grafik" src="https://github.com/user-attachments/assets/bc78828a-367d-49d0-a488-773acda886da" />
 
 
