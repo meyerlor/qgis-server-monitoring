@@ -2,6 +2,8 @@
 
 Real-time monitoring dashboard for QGIS Server instances. Collects system metrics (CPU, RAM, Disk I/O), parses QGIS and PHP-FPM logs, tracks response times, and stores historical data in SQLite for analysis.
 
+> **Note:** This project has been developed and tested with [Py-QGIS-Server](https://github.com/3liz/py-qgis-server). If you are running a "pure" QGIS Server setup (e.g. spawned via FastCGI/Apache), the log format and service unit names may differ — small adjustments to the pool configuration and log-parsing patterns in `monitor.py` will be needed.
+
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -59,18 +61,6 @@ sudo nano /etc/logrotate.d/qgis-server
 ```
 
 > If you run multiple pools, add a similar entry for each pool log file (e.g. `qgis-server-pool2.log`, `qgis-server-pool3.log`).
-
-### 3. Python packages
-
-- Python 3.8+
-- The following Python packages:
-
-```
-flask
-flask-socketio
-eventlet
-psutil
-```
 
 ## Quick Start
 
