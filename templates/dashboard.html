@@ -1,0 +1,2314 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GIS Monitoring Dashboard</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #60a5fa;
+            font-size: 2em;
+        }
+        
+        /* Tab Navigation */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #334155;
+            padding-bottom: 0;
+        }
+        
+        .tab {
+            padding: 15px 30px;
+            background: #1e293b;
+            border: none;
+            border-radius: 8px 8px 0 0;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: 600;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+        }
+        
+        .tab:hover {
+            background: #334155;
+            color: #e2e8f0;
+        }
+        
+        .tab.active {
+            background: #334155;
+            color: #60a5fa;
+            border-bottom: 3px solid #60a5fa;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Live Monitor Styles (existing) */
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        
+        .card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        
+        .card h2 {
+            margin-bottom: 15px;
+            color: #60a5fa;
+            font-size: 1.3em;
+        }
+        
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #334155;
+        }
+        
+        .metric:last-child {
+            border-bottom: none;
+        }
+        
+        .metric-label {
+            color: #94a3b8;
+            font-weight: 500;
+        }
+        
+        .metric-value {
+            color: #e2e8f0;
+            font-weight: 700;
+            font-size: 1.1em;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 200px;
+            margin-top: 15px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #0f172a;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            transition: width 0.3s ease;
+        }
+        
+        .response-card {
+            background: #1e293b;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .response-card.pool2 {
+            border-left-color: #8b5cf6;
+        }
+        
+        .response-card.pool3 {
+            border-left-color: #ec4899;
+        }
+        
+        .response-time {
+            font-size: 2em;
+            font-weight: 700;
+            color: #60a5fa;
+            margin: 10px 0;
+        }
+        
+        .response-label {
+            color: #94a3b8;
+            font-size: 0.9em;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .stat-item {
+            background: #0f172a;
+            padding: 10px;
+            border-radius: 6px;
+        }
+        
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: #e2e8f0;
+        }
+        
+        .stat-label {
+            font-size: 0.85em;
+            color: #94a3b8;
+        }
+        
+        .timeframe-btn {
+            padding: 8px 16px;
+            background: #1e293b;
+            border: 2px solid #334155;
+            border-radius: 6px;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .timeframe-btn:hover {
+            background: #334155;
+            border-color: #3b82f6;
+            color: #e2e8f0;
+        }
+        
+        .timeframe-btn.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .sort-btn {
+            padding: 4px 10px;
+            background: transparent;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+        }
+        
+        .sort-btn:hover {
+            background: #1e293b;
+            border-color: #60a5fa;
+            color: #e2e8f0;
+        }
+        
+        .sort-btn span {
+            color: inherit;
+        }
+        
+        .slowest-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        .slowest-table th {
+            background: #0f172a;
+            padding: 12px;
+            text-align: left;
+            color: #94a3b8;
+            font-weight: 600;
+            border-bottom: 2px solid #334155;
+        }
+        
+        .slowest-table td {
+            padding: 10px;
+            border-bottom: 1px solid #334155;
+            word-break: break-word;
+        }
+        
+        .slowest-table tr:hover {
+            background: #1e293b;
+        }
+        
+        .slowest-table .response-slow {
+            color: #fbbf24;
+            font-weight: 600;
+        }
+        
+        .slowest-table .response-critical {
+            color: #ef4444;
+            font-weight: 600;
+        }
+        
+        .issues-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .issue-item {
+            background: #0f172a;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 6px;
+            border-left: 4px solid #fbbf24;
+        }
+        
+        .issue-item.error {
+            border-left-color: #ef4444;
+        }
+        
+        .issue-time {
+            color: #94a3b8;
+            font-size: 0.85em;
+        }
+        
+        .issue-level {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        
+        .issue-level.WARNING {
+            background: #fbbf24;
+            color: #000;
+        }
+        
+        .issue-level.ERROR {
+            background: #ef4444;
+            color: #fff;
+        }
+        
+        .issue-message {
+            margin-top: 8px;
+            color: #cbd5e1;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        
+        /* Request History Styles */
+        .filters {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .filter-label {
+            color: #94a3b8;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+        
+        select, input {
+            padding: 10px 15px;
+            background: #0f172a;
+            border: 2px solid #334155;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-size: 1em;
+            min-width: 200px;
+        }
+        
+        select:focus, input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #1e293b;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .data-table th {
+            background: #0f172a;
+            padding: 15px;
+            text-align: left;
+            color: #60a5fa;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .data-table th:hover {
+            background: #1e293b;
+        }
+        
+        .data-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #334155;
+        }
+        
+        .data-table tr:hover {
+            background: #334155;
+        }
+        
+        .data-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .sort-icon {
+            margin-left: 5px;
+            color: #94a3b8;
+        }
+        
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        
+        .stat-card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 12px;
+        }
+        
+        .stat-card h3 {
+            color: #60a5fa;
+            margin-bottom: 15px;
+        }
+        
+        .stat-list {
+            list-style: none;
+        }
+        
+        .stat-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .stat-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #94a3b8;
+            font-size: 1.2em;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #64748b;
+            font-size: 1.1em;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .tabs {
+                flex-direction: column;
+            }
+            
+            .tab {
+                border-radius: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖥️ GIS Monitoring Dashboard</h1>
+        
+        <!-- Tab Navigation -->
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('live')">📊 Live Monitor</button>
+            <button class="tab" onclick="switchTab('requests')">📝 Request History</button>
+            <button class="tab" onclick="switchTab('analytics')">📈 Analytics</button>
+            <button class="tab" onclick="switchTab('system')">💻 System History</button>
+        </div>
+        
+        <!-- Tab 1: Live Monitor -->
+        <div id="tab-live" class="tab-content active">
+            <div class="dashboard">
+                <!-- Response Time Cards for each pool -->
+                <div class="card response-card">
+                    <h2>⚡ Pool 1 - Response Zeiten</h2>
+                    <div class="response-time" id="pool1-10min">--</div>
+                    <div class="response-label">Durchschnitt (10 Min)</div>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="pool1-30min">--</div>
+                            <div class="stat-label">30 Min</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="pool1-1hour">--</div>
+                            <div class="stat-label">1 Stunde</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="pool1-24hour">--</div>
+                            <div class="stat-label">24 Stunden</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="pool1-count">0</div>
+                            <div class="stat-label">Requests heute</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card response-card pool2">
+                    <h2>⚡ Pool 2 - Response Zeiten</h2>
+                    <div class="response-time" id="pool2-10min">--</div>
+                    <div class="response-label">Durchschnitt (10 Min)</div>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="pool2-30min">--</div>
+                            <div class="stat-label">30 Min</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="pool2-1hour">--</div>
+                            <div class="stat-label">1 Stunde</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="pool2-24hour">--</div>
+                            <div class="stat-label">24 Stunden</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="pool2-count">0</div>
+                            <div class="stat-label">Requests heute</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card response-card pool3">
+                    <h2>⚡ Pool 3 - Response Zeiten</h2>
+                    <div class="response-time" id="pool3-10min">--</div>
+                    <div class="response-label">Durchschnitt (10 Min)</div>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="pool3-30min">--</div>
+                            <div class="stat-label">30 Min</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="pool3-1hour">--</div>
+                            <div class="stat-label">1 Stunde</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="pool3-24hour">--</div>
+                            <div class="stat-label">24 Stunden</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="pool3-count">0</div>
+                            <div class="stat-label">Requests heute</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- CPU Card -->
+                <div class="card">
+                    <h2>⚡ CPU Auslastung</h2>
+                    <div class="metric">
+                        <span class="metric-label">Gesamt</span>
+                        <span class="metric-value" id="cpuTotal">--</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Kerne</span>
+                        <span class="metric-value" id="cpuCores">--</span>
+                    </div>
+                    <div style="margin: 10px 0; display: flex; gap: 5px; flex-wrap: wrap;">
+                        <button class="timeframe-btn active" onclick="setSystemTimeframe('5min')">5 Min</button>
+                        <button class="timeframe-btn" onclick="setSystemTimeframe('10min')">10 Min</button>
+                        <button class="timeframe-btn" onclick="setSystemTimeframe('30min')">30 Min</button>
+                        <button class="timeframe-btn" onclick="setSystemTimeframe('1hour')">1 Std</button>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="cpuChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Memory Card -->
+                <div class="card">
+                    <h2>💾 RAM Nutzung</h2>
+                    <div class="metric">
+                        <span class="metric-label">Verwendet</span>
+                        <span class="metric-value" id="memUsed">--</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Verfügbar</span>
+                        <span class="metric-value" id="memAvailable">--</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Gesamt</span>
+                        <span class="metric-value" id="memTotal">--</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="memProgress" style="width: 0%"></div>
+                    </div>
+                    <div style="margin: 10px 0; display: flex; gap: 5px; flex-wrap: wrap;">
+                        <button class="timeframe-btn active" onclick="setSystemTimeframe('5min')">5 Min</button>
+                        <button class="timeframe-btn" onclick="setSystemTimeframe('10min')">10 Min</button>
+                        <button class="timeframe-btn" onclick="setSystemTimeframe('30min')">30 Min</button>
+                        <button class="timeframe-btn" onclick="setSystemTimeframe('1hour')">1 Std</button>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="memChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Network Card with Chart -->
+<div class="card">
+                    <h2>🌐 Network Traffic (Live)</h2>
+                    <div class="chart-container" style="height: 200px;">
+                        <canvas id="networkLiveChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Response Time Comparison Chart -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <h2>📊 Response Zeit Vergleich (Durchschnitt verschiedener Zeitfenster)</h2>
+                    <div class="chart-container" style="height: 350px;">
+                        <canvas id="responseComparisonChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Slowest Requests - Pool 1 -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <h2>🐌 Pool 1: Top 5 Langsamste Requests (letzte 10 Min)</h2>
+                    <table class="slowest-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Response Zeit</th>
+                                <th>Request ID</th>
+                                <th>Typ</th>
+                                <th>Projekt</th>
+                                <th>User</th>
+                                <th>Layer</th>
+                            </tr>
+                        </thead>
+                        <tbody id="slowest-pool1">
+                            <tr><td colspan="7" style="text-align: center; color: #94a3b8;">Warte auf Daten...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Slowest Requests - Pool 2 -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <h2>🐌 Pool 2: Top 5 Langsamste Requests (letzte 10 Min)</h2>
+                    <table class="slowest-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Response Zeit</th>
+                                <th>Request ID</th>
+                                <th>Typ</th>
+                                <th>Projekt</th>
+                                <th>User</th>
+                                <th>Layer</th>
+                            </tr>
+                        </thead>
+                        <tbody id="slowest-pool2">
+                            <tr><td colspan="7" style="text-align: center; color: #94a3b8;">Warte auf Daten...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Slowest Requests - Pool 3 -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <h2>🐌 Pool 3: Top 5 Langsamste Requests (letzte 10 Min)</h2>
+                    <table class="slowest-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Response Zeit</th>
+                                <th>Request ID</th>
+                                <th>Typ</th>
+                                <th>Projekt</th>
+                                <th>User</th>
+                                <th>Layer</th>
+                            </tr>
+                        </thead>
+                        <tbody id="slowest-pool3">
+                            <tr><td colspan="7" style="text-align: center; color: #94a3b8;">Warte auf Daten...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Critical Issues -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <h2>⚠️ Kritische Fehler & Warnungen</h2>
+                    <div class="issues-list" id="issuesList">
+                        <div class="no-data">Keine kritischen Probleme</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab 2: Request History -->
+        <div id="tab-requests" class="tab-content">
+            <div class="filters">
+                <div class="filter-group">
+                    <label class="filter-label">Projekt</label>
+                    <select id="filter-project" onchange="loadRequestHistory()">
+                        <option value="all">Alle Projekte</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Pool</label>
+                    <select id="filter-pool" onchange="loadRequestHistory()">
+                        <option value="all">Alle Pools</option>
+                        <option value="qgis-pool1">Pool 1</option>
+                        <option value="qgis-pool2">Pool 2</option>
+                        <option value="qgis-pool3">Pool 3</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Zeitraum</label>
+                    <select id="filter-days" onchange="loadRequestHistory()">
+                        <option value="1">Heute</option>
+                        <option value="7" selected>Letzte 7 Tage</option>
+                        <option value="30">Letzte 30 Tage</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>📊 Requests pro Stunde</h2>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="requestsPerHourChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="stats-container">
+                <div class="stat-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3>👥 User Aktivität</h3>
+                        <div style="display: flex; gap: 5px;">
+                            <button class="timeframe-btn active" onclick="setUserStatsTimeframe('today')">Heute</button>
+                            <button class="timeframe-btn" onclick="setUserStatsTimeframe('week')">Woche</button>
+                            <button class="timeframe-btn" onclick="setUserStatsTimeframe('month')">Monat</button>
+                            <button class="timeframe-btn" onclick="setUserStatsTimeframe('all')">Gesamt</button>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 5px; margin-bottom: 10px; font-size: 0.9em;">
+                        <span style="color: #94a3b8; margin-right: 5px;">Sortieren:</span>
+                        <button class="sort-btn" onclick="sortUsers('name')">
+                            <span id="user-sort-name">Name</span>
+                        </button>
+                        <button class="sort-btn" onclick="sortUsers('count')">
+                            <span id="user-sort-count">Anzahl ▼</span>
+                        </button>
+                        <button class="sort-btn" onclick="sortUsers('avg_time')">
+                            <span id="user-sort-avg_time">Ø Zeit</span>
+                        </button>
+                    </div>
+                    <ul class="stat-list" id="userActivityList">
+                        <li class="loading">Lade Daten...</li>
+                    </ul>
+                </div>
+                
+                <div class="stat-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3>📁 Projekt Performance</h3>
+                        <div style="display: flex; gap: 5px;">
+                            <button class="timeframe-btn active" onclick="setProjectStatsTimeframe('today')">Heute</button>
+                            <button class="timeframe-btn" onclick="setProjectStatsTimeframe('week')">Woche</button>
+                            <button class="timeframe-btn" onclick="setProjectStatsTimeframe('month')">Monat</button>
+                            <button class="timeframe-btn" onclick="setProjectStatsTimeframe('all')">Gesamt</button>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 5px; margin-bottom: 10px; font-size: 0.9em;">
+                        <span style="color: #94a3b8; margin-right: 5px;">Sortieren:</span>
+                        <button class="sort-btn" onclick="sortProjects('name')">
+                            <span id="project-sort-name">Name</span>
+                        </button>
+                        <button class="sort-btn" onclick="sortProjects('count')">
+                            <span id="project-sort-count">Anzahl ▼</span>
+                        </button>
+                        <button class="sort-btn" onclick="sortProjects('avg_time')">
+                            <span id="project-sort-avg_time">Ø Zeit</span>
+                        </button>
+                    </div>
+                    <ul class="stat-list" id="projectStatsList">
+                        <li class="loading">Lade Daten...</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card" style="margin-top: 20px;">
+                <h2>📝 Request Details (neueste 1000)</h2>
+                <div style="overflow-x: auto;">
+                    <table class="data-table" id="requestsTable">
+                        <thead>
+                            <tr>
+                                <th onclick="sortTable('timestamp')">Timestamp <span class="sort-icon">↕</span></th>
+                                <th onclick="sortTable('pool')">Pool <span class="sort-icon">↕</span></th>
+                                <th onclick="sortTable('project')">Projekt <span class="sort-icon">↕</span></th>
+                                <th onclick="sortTable('user')">User <span class="sort-icon">↕</span></th>
+                                <th onclick="sortTable('request_type')">Typ <span class="sort-icon">↕</span></th>
+                                <th onclick="sortTable('response_time_ms')">Dauer (ms) <span class="sort-icon">↕</span></th>
+                                <th>Layer</th>
+                            </tr>
+                        </thead>
+                        <tbody id="requestsTableBody">
+                            <tr><td colspan="7" class="loading">Lade Daten...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab 3: Analytics -->
+        <div id="tab-analytics" class="tab-content">
+            <div class="filters" style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end;">
+                <div class="filter-group">
+                    <label class="filter-label">Von Datum</label>
+                    <input type="date" id="analytics-date-from" style="padding: 8px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 4px;">
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Bis Datum</label>
+                    <input type="date" id="analytics-date-to" style="padding: 8px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 4px;">
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Projekt</label>
+                    <select id="analytics-project" style="padding: 8px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 4px;">
+                        <option value="all">Alle Projekte</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Aggregation</label>
+                    <select id="analytics-aggregation" style="padding: 8px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 4px;">
+                        <option value="hour">Stündlich</option>
+                        <option value="day" selected>Täglich</option>
+                        <option value="week">Wöchentlich</option>
+                        <option value="month">Monatlich</option>
+                    </select>
+                </div>
+                <button onclick="loadAnalytics()" style="padding: 8px 16px; background: #3b82f6; border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: 600;">
+                    📊 Analyse aktualisieren
+                </button>
+            </div>
+            
+            <!-- Performance Trends -->
+            <div class="card" style="margin-top: 20px;">
+                <h2>📈 Performance Trends über Zeit</h2>
+                <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                    Durchschnittliche und P95 (95. Perzentil) Response-Zeit über den gewählten Zeitraum
+                </p>
+                <div class="chart-container" style="height: 350px;">
+                    <canvas id="performanceTrendsChart"></canvas>
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; margin-top: 20px;">
+                <!-- Response Time Distribution -->
+                <div class="card">
+                    <h2>📊 Response-Zeit Verteilung</h2>
+                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                        Wie sind die Response-Zeiten verteilt?
+                    </p>
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="responseDistributionChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Peak Hours Heatmap -->
+                <div class="card">
+                    <h2>🔥 Peak Hours (Durchschnitt pro Stunde)</h2>
+                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                        Zu welchen Uhrzeiten sind Requests am langsamsten?
+                    </p>
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="peakHoursChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; margin-top: 20px;">
+                <!-- Top Slowest Projects -->
+                <div class="card">
+                    <h2>🐌 Langsamste Projekte</h2>
+                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                        Projekte sortiert nach durchschnittlicher Response-Zeit
+                    </p>
+                    <div class="chart-container" style="height: 350px;">
+                        <canvas id="slowestProjectsChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Pool Performance Comparison -->
+                <div class="card">
+                    <h2>⚖️ Pool Performance Vergleich</h2>
+                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                        Durchschnittliche Response-Zeit pro Pool
+                    </p>
+                    <div class="chart-container" style="height: 350px;">
+                        <canvas id="poolComparisonChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Request Volume vs Performance -->
+            <div class="card" style="margin-top: 20px;">
+                <h2>📊 Request-Volume vs Performance</h2>
+                <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                    Korrelation zwischen Anzahl Requests und durchschnittlicher Response-Zeit
+                </p>
+                <div class="chart-container" style="height: 350px;">
+                    <canvas id="volumePerformanceChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Day of Week Analysis -->
+            <div class="card" style="margin-top: 20px;">
+                <h2>📅 Wochentag-Analyse</h2>
+                <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                    Performance-Unterschiede nach Wochentag
+                </p>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="dayOfWeekChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab 4: System History -->
+        <div id="tab-system" class="tab-content">
+            <div class="filters">
+                <div class="filter-group">
+                    <label class="filter-label">Zeitraum</label>
+                    <select id="filter-system-hours" onchange="loadSystemHistory()">
+                        <option value="1">Letzte Stunde</option>
+                        <option value="6">Letzte 6 Stunden</option>
+                        <option value="24" selected>Letzte 24 Stunden</option>
+                        <option value="168">Letzte 7 Tage</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>⚡ CPU Auslastung (Historisch)</h2>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="cpuHistoryChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>💾 RAM Nutzung (Historisch)</h2>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="memHistoryChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Socket.IO connection
+        const socket = io('/monitoring');
+        
+        // Current timeframe for system charts
+        let currentTimeframe = '5min';
+        
+        // Current timeframes for user and project stats
+        let currentUserStatsTimeframe = 'today';
+        let currentProjectStatsTimeframe = 'today';
+        
+        // Sort state for user and project lists
+        let userSortBy = 'count';  // 'name', 'count', 'avg_time'
+        let userSortOrder = 'desc'; // 'asc', 'desc'
+        let userShowAll = false;
+        
+        let projectSortBy = 'count';  // 'name', 'count', 'avg_time'
+        let projectSortOrder = 'desc'; // 'asc', 'desc'
+        let projectShowAll = false;
+        
+        // Store full data for sorting
+        let allUsers = [];
+        let allProjects = [];
+        
+        // Auto-refresh intervals
+        let requestHistoryRefreshInterval = null;
+        let systemHistoryRefreshInterval = null;
+        
+        // Network traffic rate tracking (for live chart)
+        let lastNetworkData = null;
+        let lastNetworkTime = null;
+        
+        // Helper function to format bytes with dynamic units
+        function formatBytes(bytes, perSecond = false) {
+            if (bytes === 0) return '0 B' + (perSecond ? '/s' : '');
+            
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const k = 1024;
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            const value = bytes / Math.pow(k, i);
+            
+            return value.toFixed(2) + ' ' + units[i] + (perSecond ? '/s' : '');
+        }
+        
+        // Helper function to get value in best unit
+        function getBytesValue(bytes) {
+            if (bytes === 0) return { value: 0, unit: 'B' };
+            
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const k = 1024;
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            
+            return {
+                value: bytes / Math.pow(k, i),
+                unit: units[i]
+            };
+        }
+        
+        // Helper function to convert timeframe to days
+        function timeframeToDays(timeframe) {
+            switch(timeframe) {
+                case 'today': return 0;      // 0 = Kalendertag (heute 00:00 - jetzt)
+                case 'week': return 7;       // Letzte 7 Tage
+                case 'month': return 30;     // Letzte 30 Tage
+                case 'all': return 9999;     // Alle Daten
+                default: return 1;
+            }
+        }
+        
+        // Sort users
+        function sortUsers(by) {
+            if (userSortBy === by) {
+                // Toggle order if same field
+                userSortOrder = userSortOrder === 'desc' ? 'asc' : 'desc';
+            } else {
+                userSortBy = by;
+                userSortOrder = by === 'name' ? 'asc' : 'desc'; // Default: name ascending, others descending
+            }
+            
+            // Update visual indicators
+            document.getElementById('user-sort-name').textContent = 'Name';
+            document.getElementById('user-sort-count').textContent = 'Anzahl';
+            document.getElementById('user-sort-avg_time').textContent = 'Ø Zeit';
+            
+            const arrow = userSortOrder === 'desc' ? ' ▼' : ' ▲';
+            document.getElementById(`user-sort-${userSortBy}`).textContent = 
+                (userSortBy === 'name' ? 'Name' : userSortBy === 'count' ? 'Anzahl' : 'Ø Zeit') + arrow;
+            
+            renderUserList();
+        }
+        
+        // Sort projects
+        function sortProjects(by) {
+            if (projectSortBy === by) {
+                // Toggle order if same field
+                projectSortOrder = projectSortOrder === 'desc' ? 'asc' : 'desc';
+            } else {
+                projectSortBy = by;
+                projectSortOrder = by === 'name' ? 'asc' : 'desc';
+            }
+            
+            // Update visual indicators
+            document.getElementById('project-sort-name').textContent = 'Name';
+            document.getElementById('project-sort-count').textContent = 'Anzahl';
+            document.getElementById('project-sort-avg_time').textContent = 'Ø Zeit';
+            
+            const arrow = projectSortOrder === 'desc' ? ' ▼' : ' ▲';
+            document.getElementById(`project-sort-${projectSortBy}`).textContent = 
+                (projectSortBy === 'name' ? 'Name' : projectSortBy === 'count' ? 'Anzahl' : 'Ø Zeit') + arrow;
+            
+            renderProjectList();
+        }
+        
+        // Toggle show all users
+        function toggleShowAllUsers() {
+            userShowAll = !userShowAll;
+            renderUserList();
+        }
+        
+        // Toggle show all projects
+        function toggleShowAllProjects() {
+            projectShowAll = !projectShowAll;
+            renderProjectList();
+        }
+        
+        // Render user list with current sort and display settings
+        function renderUserList() {
+            const userList = document.getElementById('userActivityList');
+            
+            if (!allUsers || allUsers.length === 0) {
+                userList.innerHTML = '<li class="no-data">Keine Daten</li>';
+                return;
+            }
+            
+            // Sort data
+            let sortedUsers = [...allUsers];
+            sortedUsers.sort((a, b) => {
+                let valA, valB;
+                if (userSortBy === 'name') {
+                    valA = a.user.toLowerCase();
+                    valB = b.user.toLowerCase();
+                    return userSortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                } else if (userSortBy === 'count') {
+                    valA = a.count;
+                    valB = b.count;
+                } else { // avg_time
+                    valA = a.avg_time;
+                    valB = b.avg_time;
+                }
+                return userSortOrder === 'asc' ? valA - valB : valB - valA;
+            });
+            
+            // Limit display
+            const displayCount = userShowAll ? sortedUsers.length : Math.min(10, sortedUsers.length);
+            const displayUsers = sortedUsers.slice(0, displayCount);
+            
+            userList.innerHTML = '';
+            displayUsers.forEach(user => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${user.user}</span>
+                    <span>${user.count} Requests (Ø ${user.avg_time}ms)</span>
+                `;
+                userList.appendChild(li);
+            });
+            
+            // Add show more/less button if needed
+            if (sortedUsers.length > 10) {
+                const li = document.createElement('li');
+                li.style.textAlign = 'center';
+                li.style.padding = '10px';
+                li.style.cursor = 'pointer';
+                li.style.color = '#60a5fa';
+                li.innerHTML = userShowAll ? 
+                    `▲ Weniger anzeigen (${sortedUsers.length - 10} ausgeblendet)` : 
+                    `▼ Alle anzeigen (${sortedUsers.length - 10} weitere)`;
+                li.onclick = toggleShowAllUsers;
+                userList.appendChild(li);
+            }
+        }
+        
+        // Render project list with current sort and display settings
+        function renderProjectList() {
+            const projectList = document.getElementById('projectStatsList');
+            
+            if (!allProjects || allProjects.length === 0) {
+                projectList.innerHTML = '<li class="no-data">Keine Daten</li>';
+                return;
+            }
+            
+            // Sort data
+            let sortedProjects = [...allProjects];
+            sortedProjects.sort((a, b) => {
+                let valA, valB;
+                if (projectSortBy === 'name') {
+                    valA = a.project.toLowerCase();
+                    valB = b.project.toLowerCase();
+                    return projectSortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                } else if (projectSortBy === 'count') {
+                    valA = a.count;
+                    valB = b.count;
+                } else { // avg_time
+                    valA = a.avg_time;
+                    valB = b.avg_time;
+                }
+                return projectSortOrder === 'asc' ? valA - valB : valB - valA;
+            });
+            
+            // Limit display
+            const displayCount = projectShowAll ? sortedProjects.length : Math.min(10, sortedProjects.length);
+            const displayProjects = sortedProjects.slice(0, displayCount);
+            
+            projectList.innerHTML = '';
+            displayProjects.forEach(proj => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${proj.project}</span>
+                    <span>${proj.count} Requests (Ø ${proj.avg_time}ms)</span>
+                `;
+                projectList.appendChild(li);
+            });
+            
+            // Add show more/less button if needed
+            if (sortedProjects.length > 10) {
+                const li = document.createElement('li');
+                li.style.textAlign = 'center';
+                li.style.padding = '10px';
+                li.style.cursor = 'pointer';
+                li.style.color = '#60a5fa';
+                li.innerHTML = projectShowAll ? 
+                    `▲ Weniger anzeigen (${sortedProjects.length - 10} ausgeblendet)` : 
+                    `▼ Alle anzeigen (${sortedProjects.length - 10} weitere)`;
+                li.onclick = toggleShowAllProjects;
+                projectList.appendChild(li);
+            }
+        }
+        
+        // Set user stats timeframe
+        function setUserStatsTimeframe(timeframe) {
+            currentUserStatsTimeframe = timeframe;
+            
+            // Update button states
+            const buttons = event.target.parentElement.querySelectorAll('.timeframe-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Reload stats
+            loadRequestStats();
+        }
+        
+        // Set project stats timeframe
+        function setProjectStatsTimeframe(timeframe) {
+            currentProjectStatsTimeframe = timeframe;
+            
+            // Update button states
+            const buttons = event.target.parentElement.querySelectorAll('.timeframe-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Reload stats
+            loadRequestStats();
+        }
+        
+        // Tab switching
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Clear existing refresh intervals
+            if (requestHistoryRefreshInterval) {
+                clearInterval(requestHistoryRefreshInterval);
+                requestHistoryRefreshInterval = null;
+            }
+            if (systemHistoryRefreshInterval) {
+                clearInterval(systemHistoryRefreshInterval);
+                systemHistoryRefreshInterval = null;
+            }
+            
+            // Show selected tab
+            document.getElementById('tab-' + tabName).classList.add('active');
+            event.target.classList.add('active');
+            
+            // Load data for the tab and set up auto-refresh
+            if (tabName === 'requests') {
+                loadRequestHistory();
+                loadRequestStats();
+                // Auto-refresh every 5 seconds
+                requestHistoryRefreshInterval = setInterval(() => {
+                    loadRequestHistory();
+                    loadRequestStats();
+                }, 5000);
+            } else if (tabName === 'system') {
+                loadSystemHistory();
+                // Auto-refresh every 5 seconds
+                systemHistoryRefreshInterval = setInterval(() => {
+                    loadSystemHistory();
+                }, 5000);
+            } else if (tabName === 'analytics') {
+                initializeAnalytics();
+            }
+        }
+        
+        // Get max points based on timeframe
+        function getMaxPoints() {
+            const limits = {
+                '5min': 60,    // 5 minutes * 12 points/min
+                '10min': 120,  // 10 minutes * 12 points/min
+                '30min': 360,  // 30 minutes * 12 points/min
+                '1hour': 720   // 60 minutes * 12 points/min
+            };
+            return limits[currentTimeframe] || 60;
+        }
+        
+        // Set system monitoring timeframe
+        function setSystemTimeframe(timeframe) {
+            currentTimeframe = timeframe;
+            
+            // Update button states
+            document.querySelectorAll('.timeframe-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Trim data to fit new timeframe if needed
+            const maxPoints = getMaxPoints();
+            
+            // Trim CPU chart data if too many points
+            while (cpuChart.data.labels.length > maxPoints) {
+                cpuChart.data.labels.shift();
+                cpuChart.data.datasets[0].data.shift();
+            }
+            
+            // Trim memory chart data if too many points
+            while (memChart.data.labels.length > maxPoints) {
+                memChart.data.labels.shift();
+                memChart.data.datasets[0].data.shift();
+            }
+            
+            cpuChart.update();
+            memChart.update();
+        }
+        
+        // Chart.js setup
+        const chartConfig = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: '#334155'
+                    },
+                    ticks: {
+                        color: '#94a3b8'
+                    }
+                },
+                x: {
+                    grid: {
+                        color: '#334155'
+                    },
+                    ticks: {
+                        color: '#94a3b8',
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 10
+                    }
+                }
+            }
+        };
+        
+        // Initialize CPU Chart
+        const cpuChart = new Chart(document.getElementById('cpuChart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'CPU %',
+                    data: [],
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: chartConfig
+        });
+        
+        // Initialize Memory Chart
+        const memChart = new Chart(document.getElementById('memChart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Memory %',
+                    data: [],
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: chartConfig
+        });
+        
+        // Initialize Network Live Chart
+        const networkLiveChart = new Chart(document.getElementById('networkLiveChart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Sent',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Received',
+                        data: [],
+                        borderColor: '#ec4899',
+                        backgroundColor: 'rgba(236, 72, 153, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                ...chartConfig,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: { color: '#94a3b8' }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                // Format value with dynamic unit
+                                const bytes = context.parsed.y * 1024 * 1024; // Convert MB back to bytes
+                                label += formatBytes(bytes, true);
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            color: '#94a3b8',
+                            callback: function(value) {
+                                // Dynamic unit on Y-axis
+                                const bytes = value * 1024 * 1024; // Convert MB to bytes
+                                const formatted = getBytesValue(bytes);
+                                return formatted.value.toFixed(1) + ' ' + formatted.unit + '/s';
+                            }
+                        },
+                        grid: {
+                            color: '#1e293b'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: '#94a3b8',
+                            maxTicksLimit: 8
+                        },
+                        grid: {
+                            color: '#1e293b'
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Initialize Response Comparison Chart
+        const responseComparisonChart = new Chart(document.getElementById('responseComparisonChart'), {
+            type: 'bar',
+            data: {
+                labels: ['10 Min', '30 Min', '1 Stunde', '24 Stunden'],
+                datasets: [
+                    {
+                        label: 'Pool 1',
+                        data: [0, 0, 0, 0],
+                        backgroundColor: '#3b82f6'
+                    },
+                    {
+                        label: 'Pool 2',
+                        data: [0, 0, 0, 0],
+                        backgroundColor: '#8b5cf6'
+                    },
+                    {
+                        label: 'Pool 3',
+                        data: [0, 0, 0, 0],
+                        backgroundColor: '#ec4899'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: {
+                            color: '#94a3b8'
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Response Time (ms)',
+                            color: '#94a3b8'
+                        },
+                        grid: {
+                            color: '#334155'
+                        },
+                        ticks: {
+                            color: '#94a3b8'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: '#334155'
+                        },
+                        ticks: {
+                            color: '#94a3b8'
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Initialize Requests per Hour Chart
+        const requestsPerHourChart = new Chart(document.getElementById('requestsPerHourChart'), {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Requests',
+                    data: [],
+                    backgroundColor: '#3b82f6'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: '#334155'
+                        },
+                        ticks: {
+                            color: '#94a3b8'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: '#334155'
+                        },
+                        ticks: {
+                            color: '#94a3b8',
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Initialize System History Charts
+        const cpuHistoryChart = new Chart(document.getElementById('cpuHistoryChart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'CPU %',
+                    data: [],
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: chartConfig
+        });
+        
+        const memHistoryChart = new Chart(document.getElementById('memHistoryChart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Memory Used (GB)',
+                    data: [],
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: chartConfig
+        });
+        
+        // Analytics Charts Initialization
+        const performanceTrendsChart = new Chart(document.getElementById('performanceTrendsChart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Durchschnitt',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'P95 (95. Perzentil)',
+                        data: [],
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        fill: false,
+                        tension: 0.4,
+                        yAxisID: 'y'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, labels: { color: '#94a3b8' } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.y + 'ms';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#94a3b8', callback: function(value) { return value + 'ms'; } },
+                        grid: { color: '#1e293b' },
+                        title: { display: true, text: 'Response Zeit (ms)', color: '#94a3b8' }
+                    },
+                    x: {
+                        ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 },
+                        grid: { color: '#1e293b' }
+                    }
+                }
+            }
+        });
+
+        const responseDistributionChart = new Chart(document.getElementById('responseDistributionChart'), {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Anzahl Requests',
+                    data: [],
+                    backgroundColor: '#3b82f6'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#1e293b' }
+                    },
+                    x: {
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#1e293b' }
+                    }
+                }
+            }
+        });
+
+        const peakHoursChart = new Chart(document.getElementById('peakHoursChart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Ø Response Zeit',
+                    data: [],
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#94a3b8', callback: function(value) { return value + 'ms'; } },
+                        grid: { color: '#1e293b' }
+                    },
+                    x: {
+                        ticks: { color: '#94a3b8', callback: function(value) { return value + ':00'; } },
+                        grid: { color: '#1e293b' }
+                    }
+                }
+            }
+        });
+
+        const slowestProjectsChart = new Chart(document.getElementById('slowestProjectsChart'), {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Ø Response Zeit (ms)',
+                    data: [],
+                    backgroundColor: '#ef4444'
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#1e293b' }
+                    },
+                    y: {
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#1e293b' }
+                    }
+                }
+            }
+        });
+
+        const poolComparisonChart = new Chart(document.getElementById('poolComparisonChart'), {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Ø Response Zeit (ms)',
+                    data: [],
+                    backgroundColor: ['#3b82f6', '#8b5cf6', '#ec4899']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#1e293b' }
+                    },
+                    x: {
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#1e293b' }
+                    }
+                }
+            }
+        });
+
+        const volumePerformanceChart = new Chart(document.getElementById('volumePerformanceChart'), {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'Request Volume vs Ø Response Zeit',
+                    data: [],
+                    backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                    pointRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'Volume: ' + context.parsed.x + ' Requests, Ø Zeit: ' + context.parsed.y + 'ms';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#94a3b8', callback: function(value) { return value + 'ms'; } },
+                        grid: { color: '#1e293b' },
+                        title: { display: true, text: 'Ø Response Zeit (ms)', color: '#94a3b8' }
+                    },
+                    x: {
+                        beginAtZero: true,
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#1e293b' },
+                        title: { display: true, text: 'Anzahl Requests', color: '#94a3b8' }
+                    }
+                }
+            }
+        });
+
+        const dayOfWeekChart = new Chart(document.getElementById('dayOfWeekChart'), {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Ø Response Zeit (ms)',
+                    data: [],
+                    backgroundColor: '#8b5cf6'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#1e293b' }
+                    },
+                    x: {
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: '#1e293b' }
+                    }
+                }
+            }
+        });
+
+        // Analytics Functions
+        async function loadAnalytics() {
+            const fromDate = document.getElementById('analytics-date-from').value;
+            const toDate = document.getElementById('analytics-date-to').value;
+            const project = document.getElementById('analytics-project').value;
+            const aggregation = document.getElementById('analytics-aggregation').value;
+
+            if (!fromDate || !toDate) {
+                alert('Bitte wähle einen Zeitraum aus!');
+                return;
+            }
+
+            try {
+                // Load Performance Trends
+                const trendsResponse = await fetch(`/api/analytics/performance-trends?from_date=${fromDate}&to_date=${toDate}&project=${project}&aggregation=${aggregation}`);
+                const trendsData = await trendsResponse.json();
+                
+                performanceTrendsChart.data.labels = trendsData.map(d => d.period);
+                performanceTrendsChart.data.datasets[0].data = trendsData.map(d => d.avg_time);
+                performanceTrendsChart.data.datasets[1].data = trendsData.map(d => d.p95);
+                performanceTrendsChart.update();
+
+                // Load Response Distribution
+                const distResponse = await fetch(`/api/analytics/response-distribution?from_date=${fromDate}&to_date=${toDate}&project=${project}`);
+                const distData = await distResponse.json();
+                
+                responseDistributionChart.data.labels = distData.map(d => d.bucket);
+                responseDistributionChart.data.datasets[0].data = distData.map(d => d.count);
+                responseDistributionChart.update();
+
+                // Load Peak Hours
+                const peakResponse = await fetch(`/api/analytics/peak-hours?from_date=${fromDate}&to_date=${toDate}&project=${project}`);
+                const peakData = await peakResponse.json();
+                
+                peakHoursChart.data.labels = peakData.map(d => d.hour);
+                peakHoursChart.data.datasets[0].data = peakData.map(d => d.avg_time);
+                peakHoursChart.update();
+
+                // Load Slowest Projects
+                const projectsResponse = await fetch(`/api/analytics/project-rankings?from_date=${fromDate}&to_date=${toDate}`);
+                const projectsData = await projectsResponse.json();
+                
+                slowestProjectsChart.data.labels = projectsData.map(d => d.project).slice(0, 10);
+                slowestProjectsChart.data.datasets[0].data = projectsData.map(d => d.avg_time).slice(0, 10);
+                slowestProjectsChart.update();
+
+                // Load Pool Comparison
+                const poolResponse = await fetch(`/api/analytics/pool-comparison?from_date=${fromDate}&to_date=${toDate}&project=${project}`);
+                const poolData = await poolResponse.json();
+                
+                poolComparisonChart.data.labels = poolData.map(d => d.pool);
+                poolComparisonChart.data.datasets[0].data = poolData.map(d => d.avg_time);
+                poolComparisonChart.update();
+
+                // Load Volume vs Performance
+                const volumeResponse = await fetch(`/api/analytics/volume-performance?from_date=${fromDate}&to_date=${toDate}&project=${project}&aggregation=${aggregation}`);
+                const volumeData = await volumeResponse.json();
+                
+                volumePerformanceChart.data.datasets[0].data = volumeData.map(d => ({x: d.volume, y: d.avg_time}));
+                volumePerformanceChart.update();
+
+                // Load Day of Week Analysis
+                const dayResponse = await fetch(`/api/analytics/day-of-week?from_date=${fromDate}&to_date=${toDate}&project=${project}`);
+                const dayData = await dayResponse.json();
+                
+                dayOfWeekChart.data.labels = dayData.map(d => d.day);
+                dayOfWeekChart.data.datasets[0].data = dayData.map(d => d.avg_time);
+                dayOfWeekChart.update();
+
+            } catch (error) {
+                console.error('Error loading analytics:', error);
+                alert('Fehler beim Laden der Analytics-Daten!');
+            }
+        }
+
+        // Initialize Analytics date pickers with default values
+        function initializeAnalytics() {
+            const today = new Date();
+            const oneWeekAgo = new Date(today);
+            oneWeekAgo.setDate(today.getDate() - 7);
+            
+            document.getElementById('analytics-date-to').valueAsDate = today;
+            document.getElementById('analytics-date-from').valueAsDate = oneWeekAgo;
+            
+            // Load projects for filter
+            fetch('/api/requests/projects')
+                .then(response => response.json())
+                .then(projects => {
+                    const select = document.getElementById('analytics-project');
+                    projects.forEach(project => {
+                        const option = document.createElement('option');
+                        option.value = project;
+                        option.textContent = project;
+                        select.appendChild(option);
+                    })
+                });
+        }
+        
+        
+        // Socket event handlers
+        socket.on('connect', function() {
+            console.log('Connected to monitoring server');
+        });
+        
+        socket.on('disconnect', function() {
+            console.log('Disconnected from monitoring server');
+        });
+        
+        socket.on('metrics_update', function(data) {
+            updateSystemMetrics(data.system);
+            updateProcessTable(data.processes);
+        });
+        
+        socket.on('stats_update', function(data) {
+            updateResponseTimeCards(data);
+            updateComparisonChart(data);
+        });
+        
+        socket.on('slowest_requests', function(data) {
+            for (const [pool, requests] of Object.entries(data)) {
+                const poolName = pool.replace('qgis-', '');
+                const tbody = document.getElementById(`slowest-${poolName}`);
+                
+                if (!tbody) continue;
+                
+                tbody.innerHTML = '';
+                
+                if (requests.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #94a3b8;">Keine Daten verfügbar</td></tr>';
+                } else {
+                    requests.forEach(req => {
+                        const row = tbody.insertRow();
+                        
+                        // Color code response time
+                        let responseClass = '';
+                        if (req.response_time > 2000) {
+                            responseClass = 'response-critical';
+                        } else if (req.response_time > 1000) {
+                            responseClass = 'response-slow';
+                        }
+                        
+                        row.innerHTML = `
+                            <td>${req.timestamp}</td>
+                            <td class="${responseClass}">${req.response_time}</td>
+                            <td>${req.request_id}</td>
+                            <td>${req.request_type}</td>
+                            <td>${req.map}</td>
+                            <td>${req.user}</td>
+                            <td title="${req.layers}">${req.layers}</td>
+                        `;
+                    });
+                }
+            }
+        });
+        
+        socket.on('issues_update', function(data) {
+            updateIssuesList(data);
+        });
+        
+        function updateSystemMetrics(metrics) {
+            // CPU
+            document.getElementById('cpuTotal').textContent = metrics.cpu.total.toFixed(1) + '%';
+            document.getElementById('cpuCores').textContent = metrics.cpu.core_count;
+            
+            // Memory
+            document.getElementById('memUsed').textContent = metrics.memory.used_gb + ' GB';
+            document.getElementById('memAvailable').textContent = metrics.memory.available_gb + ' GB';
+            document.getElementById('memTotal').textContent = metrics.memory.total_gb + ' GB';
+            document.getElementById('memProgress').style.width = metrics.memory.percent + '%';
+            
+            // Network - Calculate rate (MB/s) for live chart
+            const currentTime = Date.now();
+            if (lastNetworkData && lastNetworkTime) {
+                const timeDiff = (currentTime - lastNetworkTime) / 1000; // seconds
+                
+                if (timeDiff > 0) {
+                    const sentRate = (metrics.network.sent_mb - lastNetworkData.sent_mb) / timeDiff;
+                    const recvRate = (metrics.network.recv_mb - lastNetworkData.recv_mb) / timeDiff;
+                    
+                    // Update Network Live Chart
+                    const maxPoints = getMaxPoints();
+                    networkLiveChart.data.labels.push(metrics.timestamp);
+                    networkLiveChart.data.datasets[0].data.push(Math.max(0, sentRate)); // Sent rate
+                    networkLiveChart.data.datasets[1].data.push(Math.max(0, recvRate)); // Recv rate
+                    
+                    if (networkLiveChart.data.labels.length > maxPoints) {
+                        networkLiveChart.data.labels.shift();
+                        networkLiveChart.data.datasets[0].data.shift();
+                        networkLiveChart.data.datasets[1].data.shift();
+                    }
+                    
+                    networkLiveChart.update('none');
+                }
+            }
+            
+            // Store current network data for next rate calculation
+            lastNetworkData = {
+                sent_mb: metrics.network.sent_mb,
+                recv_mb: metrics.network.recv_mb
+            };
+            lastNetworkTime = currentTime;
+            
+            // Update CPU chart
+            const maxPoints = getMaxPoints();
+            cpuChart.data.labels.push(metrics.timestamp);
+            cpuChart.data.datasets[0].data.push(metrics.cpu.total);
+            
+            if (cpuChart.data.labels.length > maxPoints) {
+                cpuChart.data.labels.shift();
+                cpuChart.data.datasets[0].data.shift();
+            }
+            
+            cpuChart.update('none');
+            
+            // Update Memory chart
+            memChart.data.labels.push(metrics.timestamp);
+            memChart.data.datasets[0].data.push(metrics.memory.percent);
+            
+            if (memChart.data.labels.length > maxPoints) {
+                memChart.data.labels.shift();
+                memChart.data.datasets[0].data.shift();
+            }
+            
+            memChart.update('none');
+        }
+        
+        function updateResponseTimeCards(stats) {
+            for (const [pool, data] of Object.entries(stats)) {
+                // Skip if not a QGIS pool (e.g., php-fpm has no response times)
+                if (!pool.startsWith('qgis-pool')) continue;
+                
+                // Skip if data structure is incomplete
+                if (!data || !data['10min']) continue;
+                
+                const poolNum = pool.replace('qgis-pool', '');
+                
+                // Update main display (10 min average)
+                const avg10 = data['10min'].avg || 0;
+                document.getElementById(`pool${poolNum}-10min`).textContent = avg10 > 0 ? Math.round(avg10) + 'ms' : '--';
+                
+                // Update other time windows
+                const avg30 = data['30min'] ? (data['30min'].avg || 0) : 0;
+                document.getElementById(`pool${poolNum}-30min`).textContent = avg30 > 0 ? Math.round(avg30) + 'ms' : '--';
+                
+                const avg1h = data['1hour'] ? (data['1hour'].avg || 0) : 0;
+                document.getElementById(`pool${poolNum}-1hour`).textContent = avg1h > 0 ? Math.round(avg1h) + 'ms' : '--';
+                
+                const avg24h = data['24hour'] ? (data['24hour'].avg || 0) : 0;
+                document.getElementById(`pool${poolNum}-24hour`).textContent = avg24h > 0 ? Math.round(avg24h) + 'ms' : '--';
+                
+                // Update request count
+                const count = data['24hour'] ? (data['24hour'].count || 0) : 0;
+                document.getElementById(`pool${poolNum}-count`).textContent = count;
+            }
+        }
+        
+        function updateComparisonChart(stats) {
+            const pools = ['qgis-pool1', 'qgis-pool2', 'qgis-pool3'];
+            const timeframes = ['10min', '30min', '1hour', '24hour'];
+            
+            pools.forEach((pool, index) => {
+                if (stats[pool] && stats[pool]['10min']) {
+                    const data = timeframes.map(tf => {
+                        if (stats[pool][tf] && stats[pool][tf].avg) {
+                            return Math.round(stats[pool][tf].avg);
+                        }
+                        return 0;
+                    });
+                    responseComparisonChart.data.datasets[index].data = data;
+                }
+            });
+            
+            responseComparisonChart.update();
+        }
+        
+        function updateProcessTable(processes) {
+            // Process table removed - function kept to avoid errors
+        }
+        
+        function updateIssuesList(issues) {
+            const container = document.getElementById('issuesList');
+            
+            // Collect all issues
+            let allIssues = [];
+            for (const [source, items] of Object.entries(issues)) {
+                items.forEach(issue => {
+                    allIssues.push({...issue, source});
+                });
+            }
+            
+            if (allIssues.length === 0) {
+                container.innerHTML = '<div class="no-data">Keine kritischen Probleme</div>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            allIssues.slice(0, 20).forEach(issue => {
+                const div = document.createElement('div');
+                div.className = 'issue-item';
+                if (issue.level === 'ERROR') {
+                    div.classList.add('error');
+                }
+                
+                div.innerHTML = `
+                    <div>
+                        <span class="issue-time">${issue.timestamp}</span>
+                        <span class="issue-level ${issue.level}">${issue.level}</span>
+                        <span style="color: #64748b; margin-left: 10px;">[${issue.source}]</span>
+                    </div>
+                    <div class="issue-message">${issue.message}</div>
+                `;
+                
+                container.appendChild(div);
+            });
+        }
+        
+        // Request History Functions
+        async function loadRequestHistory() {
+            const project = document.getElementById('filter-project').value;
+            const pool = document.getElementById('filter-pool').value;
+            const days = document.getElementById('filter-days').value;
+            
+            try {
+                const response = await fetch(`/api/requests/history?project=${project}&pool=${pool}&days=${days}`);
+                const data = await response.json();
+                
+                const tbody = document.getElementById('requestsTableBody');
+                tbody.innerHTML = '';
+                
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="no-data">Keine Daten für diesen Zeitraum</td></tr>';
+                    return;
+                }
+                
+                data.forEach(req => {
+                    const row = tbody.insertRow();
+                    
+                    let responseClass = '';
+                    if (req.response_time_ms > 2000) responseClass = 'response-critical';
+                    else if (req.response_time_ms > 1000) responseClass = 'response-slow';
+                    
+                    row.innerHTML = `
+                        <td>${new Date(req.timestamp).toLocaleString('de-DE')}</td>
+                        <td>${req.pool}</td>
+                        <td>${req.project}</td>
+                        <td>${req.user || 'N/A'}</td>
+                        <td>${req.request_type || 'N/A'}</td>
+                        <td class="${responseClass}">${req.response_time_ms}</td>
+                        <td title="${req.layers || 'N/A'}">${req.layers || 'N/A'}</td>
+                    `;
+                });
+            } catch (error) {
+                console.error('Error loading request history:', error);
+                document.getElementById('requestsTableBody').innerHTML = 
+                    '<tr><td colspan="7" class="no-data">Fehler beim Laden der Daten</td></tr>';
+            }
+        }
+        
+        async function loadRequestStats() {
+            const project = document.getElementById('filter-project').value;
+            const days = document.getElementById('filter-days').value;
+            
+            try {
+                const response = await fetch(`/api/requests/stats?project=${project}&days=${days}`);
+                const data = await response.json();
+                
+                // Update hourly chart
+                if (data.hourly && data.hourly.length > 0) {
+                    requestsPerHourChart.data.labels = data.hourly.map(h => {
+                        const date = new Date(h.hour);
+                        return date.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'}) + ' ' +
+                               date.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+                    });
+                    requestsPerHourChart.data.datasets[0].data = data.hourly.map(h => h.count);
+                    requestsPerHourChart.update();
+                }
+                
+                // Update user activity with its own timeframe
+                const userDays = timeframeToDays(currentUserStatsTimeframe);
+                const userResponse = await fetch(`/api/requests/stats?project=${project}&days=${userDays}`);
+                const userData = await userResponse.json();
+                
+                // Store and render users
+                allUsers = userData.users || [];
+                renderUserList();
+                
+                // Update project stats with its own timeframe
+                const projectDays = timeframeToDays(currentProjectStatsTimeframe);
+                const projectResponse = await fetch(`/api/requests/stats?project=all&days=${projectDays}`);
+                const projectData = await projectResponse.json();
+                
+                // Store and render projects
+                allProjects = projectData.projects || [];
+                renderProjectList();
+            } catch (error) {
+                console.error('Error loading request stats:', error);
+            }
+        }
+        
+        // Load projects list for filter
+        async function loadProjectsList() {
+            try {
+                const response = await fetch('/api/requests/projects');
+                const projects = await response.json();
+                
+                const select = document.getElementById('filter-project');
+                projects.forEach(project => {
+                    const option = document.createElement('option');
+                    option.value = project;
+                    option.textContent = project;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading projects:', error);
+            }
+        }
+        
+        // System History Functions
+        async function loadSystemHistory() {
+            const hours = document.getElementById('filter-system-hours').value;
+            
+            try {
+                const response = await fetch(`/api/system/history?hours=${hours}`);
+                const data = await response.json();
+                
+                if (data.length === 0) {
+                    return;
+                }
+                
+                // Prepare labels
+                const labels = data.map(m => {
+                    const date = new Date(m.timestamp);
+                    if (hours <= 6) {
+                        return date.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+                    } else {
+                        return date.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'}) + ' ' +
+                               date.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+                    }
+                });
+                
+                // Update CPU History
+                cpuHistoryChart.data.labels = labels;
+                cpuHistoryChart.data.datasets[0].data = data.map(m => m.cpu_percent);
+                cpuHistoryChart.update();
+                
+                // Update Memory History
+                memHistoryChart.data.labels = labels;
+                memHistoryChart.data.datasets[0].data = data.map(m => m.memory_used_gb);
+                memHistoryChart.update();
+                
+            } catch (error) {
+                console.error('Error loading system history:', error);
+            }
+        }
+        
+        // Table sorting
+        let sortState = {};
+        function sortTable(column) {
+            const tbody = document.getElementById('requestsTableBody');
+            const rows = Array.from(tbody.rows);
+            
+            // Toggle sort direction
+            if (!sortState[column]) sortState[column] = 'asc';
+            else sortState[column] = sortState[column] === 'asc' ? 'desc' : 'asc';
+            
+            const columnMap = {
+                'timestamp': 0,
+                'pool': 1,
+                'project': 2,
+                'user': 3,
+                'request_type': 4,
+                'response_time_ms': 5
+            };
+            
+            const colIndex = columnMap[column];
+            const isAsc = sortState[column] === 'asc';
+            
+            rows.sort((a, b) => {
+                let aVal = a.cells[colIndex].textContent;
+                let bVal = b.cells[colIndex].textContent;
+                
+                // Parse numbers for response time
+                if (column === 'response_time_ms') {
+                    aVal = parseInt(aVal) || 0;
+                    bVal = parseInt(bVal) || 0;
+                }
+                
+                if (isAsc) {
+                    return aVal > bVal ? 1 : -1;
+                } else {
+                    return aVal < bVal ? 1 : -1;
+                }
+            });
+            
+            rows.forEach(row => tbody.appendChild(row));
+        }
+        
+        // Load projects list on page load
+        loadProjectsList();
+    </script>
+</body>
+</html>

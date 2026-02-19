@@ -1,0 +1,10 @@
+*.db
+*.pyc
+__pycache__/
+*.log
+.env
+venv/
+*.bak
+*_bak
+*_bak.*
+*.html_bak
