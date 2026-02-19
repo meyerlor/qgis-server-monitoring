@@ -34,6 +34,7 @@ Real-time monitoring dashboard for QGIS Server instances. Collects system metric
 <img width="936" height="882" alt="grafik" src="https://github.com/user-attachments/assets/f9ebc3ba-e548-4536-9174-6f1302221b42" />
 
 **Historical system data (CPU+RAM):**
+
 <img width="1504" height="898" alt="grafik" src="https://github.com/user-attachments/assets/bc78828a-367d-49d0-a488-773acda886da" />
 
 
