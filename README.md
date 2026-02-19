@@ -16,10 +16,53 @@ Real-time monitoring dashboard for QGIS Server instances. Collects system metric
 - **Log rotation handling** — Supports both `create` and `copytruncate` rotation methods
 - **Web-based dashboard** — Single-page UI with charts (Chart.js) and real-time updates (Socket.IO)
 
-## Requirements
+## Prerequisites
+
+### 1. QGIS Server logging
+
+The monitoring dashboard relies on detailed QGIS Server log output. Make sure debug-level logging and request profiling are enabled.
+
+**Py-QGIS-Server** — in your `server.conf`:
+
+```ini
+[logging]
+level = debug
+```
+
+**QGIS Server environment** — in your `qgis-service.env` (or equivalent systemd `EnvironmentFile`):
+
+```bash
+QGIS_SERVER_LOG_LEVEL=0
+QGIS_SERVER_LOG_PROFILE=TRUE
+```
+
+### 2. Log rotation for QGIS logs
+
+QGIS Server logs grow very fast at debug level. Set up logrotate to keep them under control:
+
+```bash
+sudo nano /etc/logrotate.d/qgis-server
+```
+
+```
+/var/log/qgis/qgis-server.log {
+    daily
+    rotate 2
+    copytruncate
+    compress
+    delaycompress
+    missingok
+    notifempty
+    dateext
+    dateformat -%Y%m%d
+}
+```
+
+> If you run multiple pools, add a similar entry for each pool log file (e.g. `qgis-server-pool2.log`, `qgis-server-pool3.log`).
+
+### 3. Python packages
 
 - Python 3.8+
-- QGIS Server (with file-based or journalctl logging)
 - The following Python packages:
 
 ```
@@ -125,17 +168,66 @@ sudo systemctl enable --now qgis-monitoring.service
 
 ### Reverse proxy (Nginx)
 
-If you want to serve the dashboard behind Nginx with WebSocket support:
+It is **strongly recommended** to put the dashboard behind Nginx with password protection and SSL/TLS enabled.
+
+#### Create HTTP Basic Auth credentials
+
+```bash
+sudo apt install apache2-utils
+sudo htpasswd -c /etc/nginx/.htpasswd-monitoring admin
+```
+
+#### Enable SSL with Certbot
+
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d your-domain.example.com
+```
+
+#### Example Nginx configuration
 
 ```nginx
-location /monitoring/ {
-    proxy_pass http://127.0.0.1:8080/;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
+server {
+    server_name your-domain.example.com;
+
+    # HTTP Basic Auth
+    auth_basic "GIS Monitoring Dashboard";
+    auth_basic_user_file /etc/nginx/.htpasswd-monitoring;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        # WebSocket support (required for live updates)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Timeouts for long-lived connections
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+        proxy_send_timeout 300;
+    }
+
+    # SSL configuration will be added by Certbot
+    listen 443 ssl;
+    # ssl_certificate     /etc/letsencrypt/live/your-domain.example.com/fullchain.pem;
+    # ssl_certificate_key /etc/letsencrypt/live/your-domain.example.com/privkey.pem;
+}
+
+server {
+    listen 80;
+    server_name your-domain.example.com;
+    return 301 https://$host$request_uri;
 }
 ```
+
+> Replace `your-domain.example.com` with your actual domain. After running `certbot --nginx`, the SSL certificate paths will be filled in automatically.
 
 ### Log file permissions
 
