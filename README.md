@@ -45,7 +45,8 @@ System metrics (CPU, RAM) are collected as a secondary data source for correlati
 
 **Analytics — performance trends, peak hours, project rankings, pool comparison:**
 
-<img width="936" height="882" alt="grafik" src="https://github.com/user-attachments/assets/f9ebc3ba-e548-4536-9174-6f1302221b42" />
+<img width="936" height="888" alt="grafik" src="https://github.com/user-attachments/assets/a288cab2-fad4-4179-8367-815b30a5fc9a" />
+
 
 **System History (CPU & RAM):**
 
