@@ -938,6 +938,17 @@ def cleanup_thread():
             print(f"Error in cleanup thread: {e}")
             socketio.sleep(3600)  # Wait 1 hour on error
 
+def build_user_filter():
+    """Build SQL filter clause based on include_admin / include_anonymous query params."""
+    include_admin = request.args.get('include_admin', '0') == '1'
+    include_anonymous = request.args.get('include_anonymous', '0') == '1'
+    clauses = []
+    if not include_admin:
+        clauses.append("user != 'admin'")
+    if not include_anonymous:
+        clauses.append("user != 'Unknown'")
+    return (' AND ' + ' AND '.join(clauses)) if clauses else ''
+
 @app.route('/')
 def index():
     """Serve the dashboard HTML"""
@@ -950,15 +961,16 @@ def get_requests_history():
         project = request.args.get('project', None)
         pool = request.args.get('pool', None)
         days = int(request.args.get('days', 7))
-        
+        user_filter = build_user_filter()
+
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
-        query = '''
-            SELECT * FROM requests 
+
+        query = f'''
+            SELECT * FROM requests
             WHERE timestamp >= datetime('now', '-' || ? || ' days')
-            AND LOWER(layers) != 'overview'
+            AND LOWER(layers) != 'overview'{user_filter}
         '''
         params = [days]
         
@@ -1015,10 +1027,11 @@ def get_requests_stats():
     try:
         project_filter = request.args.get('project', None)
         days = int(request.args.get('days', 7))
-        
+        user_filter = build_user_filter()
+
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        
+
         # Build time filter based on days parameter
         # days=0 means "today" (since midnight), not "last 24 hours"
         if days == 0:
@@ -1033,7 +1046,7 @@ def get_requests_stats():
                 COUNT(*) as count
             FROM requests
             WHERE {time_filter}
-            AND user != 'admin' AND LOWER(layers) != 'overview'
+            AND LOWER(layers) != 'overview'{user_filter}
         '''
         params = []
         
@@ -1051,7 +1064,7 @@ def get_requests_stats():
             SELECT user, COUNT(*) as count, AVG(response_time_ms) as avg_time
             FROM requests
             WHERE {time_filter}
-            AND user != 'admin' AND LOWER(layers) != 'overview'
+            AND LOWER(layers) != 'overview'{user_filter}
         '''
         params_users = []
         
@@ -1070,7 +1083,7 @@ def get_requests_stats():
             SELECT project, AVG(response_time_ms) as avg_time, COUNT(*) as count
             FROM requests
             WHERE {time_filter}
-            AND user != 'admin' AND LOWER(layers) != 'overview'
+            AND LOWER(layers) != 'overview'{user_filter}
             GROUP BY project
             ORDER BY avg_time DESC
         '''
@@ -1098,10 +1111,11 @@ def get_performance_trends():
         to_date = request.args.get('to_date')
         project = request.args.get('project', 'all')
         aggregation = request.args.get('aggregation', 'day')  # hour, day, week, month
-        
+        user_filter = build_user_filter()
+
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        
+
         # Build aggregation format
         agg_formats = {
             'hour': '%Y-%m-%d %H:00:00',
@@ -1121,7 +1135,7 @@ def get_performance_trends():
                 MAX(response_time_ms) as max_time
             FROM requests
             WHERE timestamp >= ? AND timestamp <= ? AND request_type = 'GETMAP'
-            AND user != 'admin' AND LOWER(layers) != 'overview'
+            AND LOWER(layers) != 'overview'{user_filter}
         '''
         params = [from_date, to_date]
         
@@ -1143,7 +1157,7 @@ def get_performance_trends():
                 SELECT response_time_ms 
                 FROM requests
                 WHERE strftime('{agg_format}', timestamp) = ? AND request_type = 'GETMAP'
-                AND user != 'admin' AND LOWER(layers) != 'overview'
+                AND LOWER(layers) != 'overview'{user_filter}
             '''
             p95_params = [period]
             if project and project != 'all':
@@ -1170,48 +1184,6 @@ def get_performance_trends():
         print(f"Error fetching performance trends: {e}")
         return jsonify([]), 500
 
-@app.route('/api/analytics/response-distribution')
-def get_response_distribution():
-    """Get response time distribution (histogram buckets)"""
-    try:
-        from_date = request.args.get('from_date')
-        to_date = request.args.get('to_date')
-        project = request.args.get('project', 'all')
-        
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        query = '''
-            SELECT 
-                CASE 
-                    WHEN response_time_ms < 500 THEN '0-500ms'
-                    WHEN response_time_ms < 1000 THEN '500ms-1s'
-                    WHEN response_time_ms < 2000 THEN '1-2s'
-                    WHEN response_time_ms < 5000 THEN '2-5s'
-                    ELSE '>5s'
-                END as bucket,
-                COUNT(*) as count
-            FROM requests
-            WHERE timestamp >= ? AND timestamp <= ? AND request_type = 'GETMAP'
-            AND user != 'admin' AND LOWER(layers) != 'overview'
-        '''
-        params = [from_date, to_date]
-        
-        if project and project != 'all':
-            query += ' AND project = ?'
-            params.append(project)
-        
-        query += ' GROUP BY bucket ORDER BY MIN(response_time_ms)'
-        
-        cursor.execute(query, params)
-        results = [{'bucket': row[0], 'count': row[1]} for row in cursor.fetchall()]
-        
-        conn.close()
-        return jsonify(results)
-    except Exception as e:
-        print(f"Error fetching response distribution: {e}")
-        return jsonify([]), 500
-
 @app.route('/api/analytics/peak-hours')
 def get_peak_hours():
     """Get average response time by hour of day"""
@@ -1219,18 +1191,19 @@ def get_peak_hours():
         from_date = request.args.get('from_date')
         to_date = request.args.get('to_date')
         project = request.args.get('project', 'all')
-        
+        user_filter = build_user_filter()
+
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        
-        query = '''
-            SELECT 
+
+        query = f'''
+            SELECT
                 CAST(strftime('%H', timestamp) AS INTEGER) as hour,
                 AVG(response_time_ms) as avg_time,
                 COUNT(*) as count
             FROM requests
             WHERE timestamp >= ? AND timestamp <= ? AND request_type = 'GETMAP'
-            AND user != 'admin' AND LOWER(layers) != 'overview'
+            AND LOWER(layers) != 'overview'{user_filter}
         '''
         params = [from_date, to_date]
         
@@ -1255,18 +1228,19 @@ def get_project_rankings():
     try:
         from_date = request.args.get('from_date')
         to_date = request.args.get('to_date')
-        
+        user_filter = build_user_filter()
+
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT 
+
+        cursor.execute(f'''
+            SELECT
                 project,
                 AVG(response_time_ms) as avg_time,
                 COUNT(*) as count
             FROM requests
             WHERE timestamp >= ? AND timestamp <= ? AND request_type = 'GETMAP'
-            AND user != 'admin' AND LOWER(layers) != 'overview'
+            AND LOWER(layers) != 'overview'{user_filter}
             GROUP BY project
             ORDER BY avg_time DESC
             LIMIT 10
@@ -1287,12 +1261,13 @@ def get_pool_comparison():
         from_date = request.args.get('from_date')
         to_date = request.args.get('to_date')
         project = request.args.get('project', 'all')
-        
+        user_filter = build_user_filter()
+
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        
-        query = '''
-            SELECT 
+
+        query = f'''
+            SELECT
                 pool,
                 AVG(response_time_ms) as avg_time,
                 COUNT(*) as count,
@@ -1300,7 +1275,7 @@ def get_pool_comparison():
                 MAX(response_time_ms) as max_time
             FROM requests
             WHERE timestamp >= ? AND timestamp <= ? AND request_type = 'GETMAP'
-            AND user != 'admin' AND LOWER(layers) != 'overview'
+            AND LOWER(layers) != 'overview'{user_filter}
         '''
         params = [from_date, to_date]
         
@@ -1328,7 +1303,8 @@ def get_volume_performance():
         to_date = request.args.get('to_date')
         project = request.args.get('project', 'all')
         aggregation = request.args.get('aggregation', 'hour')  # hour or day
-        
+        user_filter = build_user_filter()
+
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
@@ -1341,7 +1317,7 @@ def get_volume_performance():
                 AVG(response_time_ms) as avg_time
             FROM requests
             WHERE timestamp >= ? AND timestamp <= ? AND request_type = 'GETMAP'
-            AND user != 'admin' AND LOWER(layers) != 'overview'
+            AND LOWER(layers) != 'overview'{user_filter}
         '''
         params = [from_date, to_date]
         
@@ -1367,27 +1343,19 @@ def get_day_of_week_performance():
         from_date = request.args.get('from_date')
         to_date = request.args.get('to_date')
         project = request.args.get('project', 'all')
-        
+        user_filter = build_user_filter()
+
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        
-        query = '''
-            SELECT 
-                CASE CAST(strftime('%w', timestamp) AS INTEGER)
-                    WHEN 0 THEN 'Sonntag'
-                    WHEN 1 THEN 'Montag'
-                    WHEN 2 THEN 'Dienstag'
-                    WHEN 3 THEN 'Mittwoch'
-                    WHEN 4 THEN 'Donnerstag'
-                    WHEN 5 THEN 'Freitag'
-                    WHEN 6 THEN 'Samstag'
-                END as day_name,
+
+        query = f'''
+            SELECT
                 CAST(strftime('%w', timestamp) AS INTEGER) as day_num,
                 AVG(response_time_ms) as avg_time,
                 COUNT(*) as count
             FROM requests
             WHERE timestamp >= ? AND timestamp <= ? AND request_type = 'GETMAP'
-            AND user != 'admin' AND LOWER(layers) != 'overview'
+            AND LOWER(layers) != 'overview'{user_filter}
         '''
         params = [from_date, to_date]
         
@@ -1398,7 +1366,7 @@ def get_day_of_week_performance():
         query += ' GROUP BY day_num ORDER BY day_num'
         
         cursor.execute(query, params)
-        results = [{'day': row[0], 'avg_time': round(row[2], 1), 'count': row[3]} for row in cursor.fetchall()]
+        results = [{'day_num': row[0], 'avg_time': round(row[1], 1), 'count': row[2]} for row in cursor.fetchall()]
         
         conn.close()
         return jsonify(results)
@@ -1466,6 +1434,15 @@ def get_system_history():
         print(f"Error fetching system history: {e}")
         return jsonify([]), 500
 
+@app.route('/api/config/pools')
+def get_pool_config():
+    """Return pool names so the frontend can build itself dynamically"""
+    pools = []
+    for i, name in enumerate(POOL_NAMES):
+        display = name.replace('qgis-', '').replace('-', ' ').title()
+        pools.append({'key': name, 'display': display, 'index': i})
+    return jsonify(pools)
+
 @socketio.on('connect', namespace='/monitoring')
 def handle_connect():
     """Handle client connection"""
@@ -1498,7 +1475,7 @@ def handle_connect():
     
     # Send initial response time stats
     initial_stats = {}
-    for pool in ['qgis-pool1', 'qgis-pool2', 'qgis-pool3']:
+    for pool in POOL_NAMES:
         initial_stats[pool] = {
             '10min': calculate_response_stats(pool, 600),    # In-memory (fast, recent)
             '30min': calculate_response_stats(pool, 1800),   # In-memory (fast, recent)
@@ -1519,7 +1496,7 @@ def handle_connect():
     
     # Send initial slowest requests
     slowest_update = {}
-    for pool in ['qgis-pool1', 'qgis-pool2', 'qgis-pool3']:
+    for pool in POOL_NAMES:
         slowest_update[pool] = [
             {
                 'response_time': r[0],

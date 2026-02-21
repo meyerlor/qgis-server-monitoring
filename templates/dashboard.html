@@ -143,14 +143,6 @@
             border-left: 4px solid #3b82f6;
         }
         
-        .response-card.pool2 {
-            border-left-color: #8b5cf6;
-        }
-        
-        .response-card.pool3 {
-            border-left-color: #ec4899;
-        }
-        
         .response-time {
             font-size: 2em;
             font-weight: 700;
@@ -522,81 +514,8 @@
         <!-- Tab 1: Live Monitor -->
         <div id="tab-live" class="tab-content active">
             <div class="dashboard">
-                <!-- Response Time Cards for each pool -->
-                <div class="card response-card">
-                    <h2 data-i18n="pool1_response">⚡ Pool 1 - Response Zeiten</h2>
-                    <div class="response-time" id="pool1-10min">--</div>
-                    <div class="response-label" data-i18n="avg_10min">Durchschnitt (10 Min)</div>
-
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <div class="stat-value" id="pool1-30min">--</div>
-                            <div class="stat-label">30 Min</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="pool1-1hour">--</div>
-                            <div class="stat-label" data-i18n="1hour">1 Stunde</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="pool1-24hour">--</div>
-                            <div class="stat-label" data-i18n="24hours">24 Stunden</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="pool1-count">0</div>
-                            <div class="stat-label" data-i18n="requests_today">Requests heute</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card response-card pool2">
-                    <h2 data-i18n="pool2_response">⚡ Pool 2 - Response Zeiten</h2>
-                    <div class="response-time" id="pool2-10min">--</div>
-                    <div class="response-label" data-i18n="avg_10min">Durchschnitt (10 Min)</div>
-
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <div class="stat-value" id="pool2-30min">--</div>
-                            <div class="stat-label">30 Min</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="pool2-1hour">--</div>
-                            <div class="stat-label" data-i18n="1hour">1 Stunde</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="pool2-24hour">--</div>
-                            <div class="stat-label" data-i18n="24hours">24 Stunden</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="pool2-count">0</div>
-                            <div class="stat-label" data-i18n="requests_today">Requests heute</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card response-card pool3">
-                    <h2 data-i18n="pool3_response">⚡ Pool 3 - Response Zeiten</h2>
-                    <div class="response-time" id="pool3-10min">--</div>
-                    <div class="response-label" data-i18n="avg_10min">Durchschnitt (10 Min)</div>
-
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <div class="stat-value" id="pool3-30min">--</div>
-                            <div class="stat-label">30 Min</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="pool3-1hour">--</div>
-                            <div class="stat-label" data-i18n="1hour">1 Stunde</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="pool3-24hour">--</div>
-                            <div class="stat-label" data-i18n="24hours">24 Stunden</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="pool3-count">0</div>
-                            <div class="stat-label" data-i18n="requests_today">Requests heute</div>
-                        </div>
-                    </div>
-                </div>
+                <!-- Response Time Cards (dynamically generated) -->
+                <div id="pool-cards" style="display: contents;"></div>
                 
                 <!-- CPU Card -->
                 <div class="card">
@@ -665,68 +584,8 @@
                     </div>
                 </div>
                 
-                <!-- Slowest Requests - Pool 1 -->
-                <div class="card" style="grid-column: 1 / -1;">
-                    <h2 data-i18n="slowest_pool1">🐌 Pool 1: Top 5 Langsamste Requests (letzte 10 Min)</h2>
-                    <table class="slowest-table">
-                        <thead>
-                            <tr>
-                                <th>Timestamp</th>
-                                <th data-i18n="response_time">Response Zeit</th>
-                                <th>Request ID</th>
-                                <th data-i18n="type">Typ</th>
-                                <th data-i18n="project">Projekt</th>
-                                <th>User</th>
-                                <th>Layer</th>
-                            </tr>
-                        </thead>
-                        <tbody id="slowest-pool1">
-                            <tr><td colspan="7" style="text-align: center; color: #94a3b8;" data-i18n="waiting_data">Warte auf Daten...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- Slowest Requests - Pool 2 -->
-                <div class="card" style="grid-column: 1 / -1;">
-                    <h2 data-i18n="slowest_pool2">🐌 Pool 2: Top 5 Langsamste Requests (letzte 10 Min)</h2>
-                    <table class="slowest-table">
-                        <thead>
-                            <tr>
-                                <th>Timestamp</th>
-                                <th data-i18n="response_time">Response Zeit</th>
-                                <th>Request ID</th>
-                                <th data-i18n="type">Typ</th>
-                                <th data-i18n="project">Projekt</th>
-                                <th>User</th>
-                                <th>Layer</th>
-                            </tr>
-                        </thead>
-                        <tbody id="slowest-pool2">
-                            <tr><td colspan="7" style="text-align: center; color: #94a3b8;" data-i18n="waiting_data">Warte auf Daten...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- Slowest Requests - Pool 3 -->
-                <div class="card" style="grid-column: 1 / -1;">
-                    <h2 data-i18n="slowest_pool3">🐌 Pool 3: Top 5 Langsamste Requests (letzte 10 Min)</h2>
-                    <table class="slowest-table">
-                        <thead>
-                            <tr>
-                                <th>Timestamp</th>
-                                <th data-i18n="response_time">Response Zeit</th>
-                                <th>Request ID</th>
-                                <th data-i18n="type">Typ</th>
-                                <th data-i18n="project">Projekt</th>
-                                <th>User</th>
-                                <th>Layer</th>
-                            </tr>
-                        </thead>
-                        <tbody id="slowest-pool3">
-                            <tr><td colspan="7" style="text-align: center; color: #94a3b8;" data-i18n="waiting_data">Warte auf Daten...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
+                <!-- Slowest Requests Tables (dynamically generated) -->
+                <div id="slowest-tables" style="display: contents;"></div>
                 
                 <!-- Critical Issues -->
                 <div class="card" style="grid-column: 1 / -1;">
@@ -751,9 +610,6 @@
                     <label class="filter-label">Pool</label>
                     <select id="filter-pool" onchange="loadRequestHistory()">
                         <option value="all" data-i18n="all_pools">Alle Pools</option>
-                        <option value="qgis-pool1">Pool 1</option>
-                        <option value="qgis-pool2">Pool 2</option>
-                        <option value="qgis-pool3">Pool 3</option>
                     </select>
                 </div>
                 <div class="filter-group">
@@ -763,6 +619,18 @@
                         <option value="7" selected data-i18n="last_7_days">Letzte 7 Tage</option>
                         <option value="30" data-i18n="last_30_days">Letzte 30 Tage</option>
                     </select>
+                </div>
+                <div class="filter-group" style="display: flex; align-items: center; gap: 8px;">
+                    <label style="color: #94a3b8; font-size: 0.85em; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="req-include-admin" onchange="loadRequestHistory()">
+                        <span data-i18n="include_admin">Admin einbeziehen</span>
+                    </label>
+                </div>
+                <div class="filter-group" style="display: flex; align-items: center; gap: 8px;">
+                    <label style="color: #94a3b8; font-size: 0.85em; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="req-include-anonymous" onchange="loadRequestHistory()">
+                        <span data-i18n="include_anonymous">Anonyme einbeziehen</span>
+                    </label>
                 </div>
             </div>
             
@@ -878,6 +746,18 @@
                         <option value="month" data-i18n="monthly">Monatlich</option>
                     </select>
                 </div>
+                <div class="filter-group" style="display: flex; align-items: center; gap: 8px;">
+                    <label style="color: #94a3b8; font-size: 0.85em; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="analytics-include-admin">
+                        <span data-i18n="include_admin">Admin einbeziehen</span>
+                    </label>
+                </div>
+                <div class="filter-group" style="display: flex; align-items: center; gap: 8px;">
+                    <label style="color: #94a3b8; font-size: 0.85em; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="analytics-include-anonymous">
+                        <span data-i18n="include_anonymous">Anonyme einbeziehen</span>
+                    </label>
+                </div>
                 <button onclick="loadAnalytics()" style="padding: 8px 16px; background: #3b82f6; border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: 600;" data-i18n="refresh_analytics">
                     📊 Analyse aktualisieren
                 </button>
@@ -895,22 +775,11 @@
             </div>
             
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; margin-top: 20px;">
-                <!-- Response Time Distribution -->
+                <!-- Peak Hours -->
                 <div class="card">
-                    <h2 data-i18n="response_dist">📊 Response-Zeit Verteilung</h2>
-                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="response_dist_desc">
-                        Wie sind die Response-Zeiten verteilt?
-                    </p>
-                    <div class="chart-container" style="height: 300px;">
-                        <canvas id="responseDistributionChart"></canvas>
-                    </div>
-                </div>
-                
-                <!-- Peak Hours Heatmap -->
-                <div class="card">
-                    <h2 data-i18n="peak_hours">🔥 Peak Hours (Durchschnitt pro Stunde)</h2>
+                    <h2 data-i18n="peak_hours">🔥 Peak Hours</h2>
                     <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="peak_hours_desc">
-                        Zu welchen Uhrzeiten sind Requests am langsamsten?
+                        Requests pro Stunde
                     </p>
                     <div class="chart-container" style="height: 300px;">
                         <canvas id="peakHoursChart"></canvas>
@@ -957,7 +826,7 @@
             <div class="card" style="margin-top: 20px;">
                 <h2 data-i18n="day_of_week">📅 Wochentag-Analyse</h2>
                 <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="day_of_week_desc">
-                    Performance-Unterschiede nach Wochentag
+                    Requests pro Wochentag
                 </p>
                 <div class="chart-container" style="height: 300px;">
                     <canvas id="dayOfWeekChart"></canvas>
@@ -1007,9 +876,7 @@
                 tab_analytics: '📈 Analytics',
                 tab_system: '💻 System History',
                 // Pool cards
-                pool1_response: '⚡ Pool 1 - Response Zeiten',
-                pool2_response: '⚡ Pool 2 - Response Zeiten',
-                pool3_response: '⚡ Pool 3 - Response Zeiten',
+                response_times: 'Response Zeiten',
                 avg_10min: 'Durchschnitt (10 Min)',
                 '1hour': '1 Stunde',
                 '24hours': '24 Stunden',
@@ -1025,9 +892,7 @@
                 network_live: '🌐 Network Traffic (Live)',
                 // Comparison / slowest
                 response_comparison: '📊 Response Zeit Vergleich (Durchschnitt verschiedener Zeitfenster)',
-                slowest_pool1: '🐌 Pool 1: Top 5 Langsamste Requests (letzte 10 Min)',
-                slowest_pool2: '🐌 Pool 2: Top 5 Langsamste Requests (letzte 10 Min)',
-                slowest_pool3: '🐌 Pool 3: Top 5 Langsamste Requests (letzte 10 Min)',
+                slowest_requests_title: 'Top 5 Langsamste Requests (letzte 10 Min)',
                 response_time: 'Response Zeit',
                 type: 'Typ',
                 project: 'Projekt',
@@ -1036,6 +901,8 @@
                 critical_issues: '⚠️ Kritische Fehler & Warnungen',
                 no_issues: 'Keine kritischen Probleme',
                 // Request History filters
+                include_admin: 'Admin einbeziehen',
+                include_anonymous: 'Anonyme einbeziehen',
                 all_projects: 'Alle Projekte',
                 all_pools: 'Alle Pools',
                 timerange: 'Zeitraum',
@@ -1069,10 +936,8 @@
                 refresh_analytics: '📊 Analyse aktualisieren',
                 perf_trends: '📈 Performance Trends über Zeit',
                 perf_trends_desc: 'Durchschnittliche und P95 (95. Perzentil) Response-Zeit über den gewählten Zeitraum',
-                response_dist: '📊 Response-Zeit Verteilung',
-                response_dist_desc: 'Wie sind die Response-Zeiten verteilt?',
-                peak_hours: '🔥 Peak Hours (Durchschnitt pro Stunde)',
-                peak_hours_desc: 'Zu welchen Uhrzeiten sind Requests am langsamsten?',
+                peak_hours: '🔥 Peak Hours',
+                peak_hours_desc: 'Requests pro Stunde',
                 slowest_projects: '🐌 Langsamste Projekte',
                 slowest_projects_desc: 'Projekte sortiert nach durchschnittlicher Response-Zeit',
                 pool_comparison: '⚖️ Pool Performance Vergleich',
@@ -1080,7 +945,8 @@
                 volume_vs_perf: '📊 Request-Volume vs Performance',
                 volume_vs_perf_desc: 'Korrelation zwischen Anzahl Requests und durchschnittlicher Response-Zeit',
                 day_of_week: '📅 Wochentag-Analyse',
-                day_of_week_desc: 'Performance-Unterschiede nach Wochentag',
+                day_of_week_desc: 'Requests pro Wochentag',
+                day_names: ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'],
                 alert_select_period: 'Bitte wähle einen Zeitraum aus!',
                 alert_analytics_error: 'Fehler beim Laden der Analytics-Daten!',
                 // System History
@@ -1110,9 +976,7 @@
                 tab_analytics: '📈 Analytics',
                 tab_system: '💻 System History',
                 // Pool cards
-                pool1_response: '⚡ Pool 1 - Response Times',
-                pool2_response: '⚡ Pool 2 - Response Times',
-                pool3_response: '⚡ Pool 3 - Response Times',
+                response_times: 'Response Times',
                 avg_10min: 'Average (10 min)',
                 '1hour': '1 Hour',
                 '24hours': '24 Hours',
@@ -1128,9 +992,7 @@
                 network_live: '🌐 Network Traffic (Live)',
                 // Comparison / slowest
                 response_comparison: '📊 Response Time Comparison (Average across time windows)',
-                slowest_pool1: '🐌 Pool 1: Top 5 Slowest Requests (last 10 min)',
-                slowest_pool2: '🐌 Pool 2: Top 5 Slowest Requests (last 10 min)',
-                slowest_pool3: '🐌 Pool 3: Top 5 Slowest Requests (last 10 min)',
+                slowest_requests_title: 'Top 5 Slowest Requests (last 10 min)',
                 response_time: 'Response Time',
                 type: 'Type',
                 project: 'Project',
@@ -1139,6 +1001,8 @@
                 critical_issues: '⚠️ Critical Errors & Warnings',
                 no_issues: 'No critical issues',
                 // Request History filters
+                include_admin: 'Include Admin',
+                include_anonymous: 'Include Anonymous',
                 all_projects: 'All Projects',
                 all_pools: 'All Pools',
                 timerange: 'Time Range',
@@ -1172,10 +1036,8 @@
                 refresh_analytics: '📊 Refresh Analytics',
                 perf_trends: '📈 Performance Trends over Time',
                 perf_trends_desc: 'Average and P95 (95th percentile) response time over the selected period',
-                response_dist: '📊 Response Time Distribution',
-                response_dist_desc: 'How are response times distributed?',
-                peak_hours: '🔥 Peak Hours (Average per hour)',
-                peak_hours_desc: 'At which hours are requests slowest?',
+                peak_hours: '🔥 Peak Hours',
+                peak_hours_desc: 'Requests per hour',
                 slowest_projects: '🐌 Slowest Projects',
                 slowest_projects_desc: 'Projects sorted by average response time',
                 pool_comparison: '⚖️ Pool Performance Comparison',
@@ -1183,7 +1045,8 @@
                 volume_vs_perf: '📊 Request Volume vs Performance',
                 volume_vs_perf_desc: 'Correlation between request count and average response time',
                 day_of_week: '📅 Day of Week Analysis',
-                day_of_week_desc: 'Performance differences by day of the week',
+                day_of_week_desc: 'Requests per weekday',
+                day_names: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
                 alert_select_period: 'Please select a time period!',
                 alert_analytics_error: 'Error loading analytics data!',
                 // System History
@@ -1742,23 +1605,7 @@
             type: 'bar',
             data: {
                 labels: t('chart_comparison_labels'),
-                datasets: [
-                    {
-                        label: 'Pool 1',
-                        data: [0, 0, 0, 0],
-                        backgroundColor: '#3b82f6'
-                    },
-                    {
-                        label: 'Pool 2',
-                        data: [0, 0, 0, 0],
-                        backgroundColor: '#8b5cf6'
-                    },
-                    {
-                        label: 'Pool 3',
-                        data: [0, 0, 0, 0],
-                        backgroundColor: '#ec4899'
-                    }
-                ]
+                datasets: []
             },
             options: {
                 responsive: true,
@@ -1928,14 +1775,14 @@
             }
         });
 
-        const responseDistributionChart = new Chart(document.getElementById('responseDistributionChart'), {
+        const peakHoursChart = new Chart(document.getElementById('peakHoursChart'), {
             type: 'bar',
             data: {
                 labels: [],
                 datasets: [{
                     label: t('chart_num_requests'),
                     data: [],
-                    backgroundColor: '#3b82f6'
+                    backgroundColor: '#f59e0b'
                 }]
             },
             options: {
@@ -1949,38 +1796,10 @@
                         grid: { color: '#1e293b' }
                     },
                     x: {
-                        ticks: { color: '#94a3b8' },
-                        grid: { color: '#1e293b' }
-                    }
-                }
-            }
-        });
-
-        const peakHoursChart = new Chart(document.getElementById('peakHoursChart'), {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: t('chart_avg_response'),
-                    data: [],
-                    borderColor: '#f59e0b',
-                    backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: { color: '#94a3b8', callback: function(value) { return value + 'ms'; } },
-                        grid: { color: '#1e293b' }
-                    },
-                    x: {
-                        ticks: { color: '#94a3b8', callback: function(value) { return value + ':00'; } },
+                        ticks: { color: '#94a3b8', callback: function(value, index) {
+                            const label = this.getLabelForValue(value);
+                            return label + ':00';
+                        } },
                         grid: { color: '#1e293b' }
                     }
                 }
@@ -2089,7 +1908,7 @@
             data: {
                 labels: [],
                 datasets: [{
-                    label: t('chart_avg_response_ms'),
+                    label: t('chart_num_requests'),
                     data: [],
                     backgroundColor: '#8b5cf6'
                 }]
@@ -2126,7 +1945,8 @@
 
             try {
                 // Load Performance Trends
-                const trendsResponse = await fetch(`/api/analytics/performance-trends?from_date=${fromDate}&to_date=${toDate}&project=${project}&aggregation=${aggregation}`);
+                const uf = analyticsUserParams();
+                const trendsResponse = await fetch(`/api/analytics/performance-trends?from_date=${fromDate}&to_date=${toDate}&project=${project}&aggregation=${aggregation}${uf}`);
                 const trendsData = await trendsResponse.json();
                 
                 performanceTrendsChart.data.labels = trendsData.map(d => d.period);
@@ -2134,24 +1954,16 @@
                 performanceTrendsChart.data.datasets[1].data = trendsData.map(d => d.p95);
                 performanceTrendsChart.update();
 
-                // Load Response Distribution
-                const distResponse = await fetch(`/api/analytics/response-distribution?from_date=${fromDate}&to_date=${toDate}&project=${project}`);
-                const distData = await distResponse.json();
-                
-                responseDistributionChart.data.labels = distData.map(d => d.bucket);
-                responseDistributionChart.data.datasets[0].data = distData.map(d => d.count);
-                responseDistributionChart.update();
-
-                // Load Peak Hours
-                const peakResponse = await fetch(`/api/analytics/peak-hours?from_date=${fromDate}&to_date=${toDate}&project=${project}`);
+                // Load Peak Hours (request count per hour)
+                const peakResponse = await fetch(`/api/analytics/peak-hours?from_date=${fromDate}&to_date=${toDate}&project=${project}${uf}`);
                 const peakData = await peakResponse.json();
-                
+
                 peakHoursChart.data.labels = peakData.map(d => d.hour);
-                peakHoursChart.data.datasets[0].data = peakData.map(d => d.avg_time);
+                peakHoursChart.data.datasets[0].data = peakData.map(d => d.count);
                 peakHoursChart.update();
 
                 // Load Slowest Projects
-                const projectsResponse = await fetch(`/api/analytics/project-rankings?from_date=${fromDate}&to_date=${toDate}`);
+                const projectsResponse = await fetch(`/api/analytics/project-rankings?from_date=${fromDate}&to_date=${toDate}${uf}`);
                 const projectsData = await projectsResponse.json();
                 
                 slowestProjectsChart.data.labels = projectsData.map(d => d.project).slice(0, 10);
@@ -2159,7 +1971,7 @@
                 slowestProjectsChart.update();
 
                 // Load Pool Comparison
-                const poolResponse = await fetch(`/api/analytics/pool-comparison?from_date=${fromDate}&to_date=${toDate}&project=${project}`);
+                const poolResponse = await fetch(`/api/analytics/pool-comparison?from_date=${fromDate}&to_date=${toDate}&project=${project}${uf}`);
                 const poolData = await poolResponse.json();
                 
                 poolComparisonChart.data.labels = poolData.map(d => d.pool);
@@ -2167,18 +1979,19 @@
                 poolComparisonChart.update();
 
                 // Load Volume vs Performance
-                const volumeResponse = await fetch(`/api/analytics/volume-performance?from_date=${fromDate}&to_date=${toDate}&project=${project}&aggregation=${aggregation}`);
+                const volumeResponse = await fetch(`/api/analytics/volume-performance?from_date=${fromDate}&to_date=${toDate}&project=${project}&aggregation=${aggregation}${uf}`);
                 const volumeData = await volumeResponse.json();
                 
                 volumePerformanceChart.data.datasets[0].data = volumeData.map(d => ({x: d.volume, y: d.avg_time}));
                 volumePerformanceChart.update();
 
-                // Load Day of Week Analysis
-                const dayResponse = await fetch(`/api/analytics/day-of-week?from_date=${fromDate}&to_date=${toDate}&project=${project}`);
+                // Load Day of Week Analysis (request count per weekday)
+                const dayResponse = await fetch(`/api/analytics/day-of-week?from_date=${fromDate}&to_date=${toDate}&project=${project}${uf}`);
                 const dayData = await dayResponse.json();
-                
-                dayOfWeekChart.data.labels = dayData.map(d => d.day);
-                dayOfWeekChart.data.datasets[0].data = dayData.map(d => d.avg_time);
+                const dayNames = t('day_names');
+
+                dayOfWeekChart.data.labels = dayData.map(d => dayNames[d.day_num] || d.day_num);
+                dayOfWeekChart.data.datasets[0].data = dayData.map(d => d.count);
                 dayOfWeekChart.update();
 
             } catch (error) {
@@ -2232,8 +2045,7 @@
         
         socket.on('slowest_requests', function(data) {
             for (const [pool, requests] of Object.entries(data)) {
-                const poolName = pool.replace('qgis-', '');
-                const tbody = document.getElementById(`slowest-${poolName}`);
+                const tbody = document.getElementById(`slowest-${pool}`);
                 
                 if (!tbody) continue;
                 
@@ -2340,50 +2152,54 @@
         
         function updateResponseTimeCards(stats) {
             for (const [pool, data] of Object.entries(stats)) {
-                // Skip if not a QGIS pool (e.g., php-fpm has no response times)
-                if (!pool.startsWith('qgis-pool')) continue;
-                
+                // Skip non-pool entries (e.g., php-fpm)
+                if (pool === 'php-fpm') continue;
+
                 // Skip if data structure is incomplete
                 if (!data || !data['10min']) continue;
-                
-                const poolNum = pool.replace('qgis-pool', '');
-                
-                // Update main display (10 min average)
+
+                const safeId = pool.replace(/[^a-zA-Z0-9-]/g, '');
+
+                const el10 = document.getElementById(`${safeId}-10min`);
+                if (!el10) continue;
+
                 const avg10 = data['10min'].avg || 0;
-                document.getElementById(`pool${poolNum}-10min`).textContent = avg10 > 0 ? Math.round(avg10) + 'ms' : '--';
-                
-                // Update other time windows
+                el10.textContent = avg10 > 0 ? Math.round(avg10) + 'ms' : '--';
+
                 const avg30 = data['30min'] ? (data['30min'].avg || 0) : 0;
-                document.getElementById(`pool${poolNum}-30min`).textContent = avg30 > 0 ? Math.round(avg30) + 'ms' : '--';
-                
+                document.getElementById(`${safeId}-30min`).textContent = avg30 > 0 ? Math.round(avg30) + 'ms' : '--';
+
                 const avg1h = data['1hour'] ? (data['1hour'].avg || 0) : 0;
-                document.getElementById(`pool${poolNum}-1hour`).textContent = avg1h > 0 ? Math.round(avg1h) + 'ms' : '--';
-                
+                document.getElementById(`${safeId}-1hour`).textContent = avg1h > 0 ? Math.round(avg1h) + 'ms' : '--';
+
                 const avg24h = data['24hour'] ? (data['24hour'].avg || 0) : 0;
-                document.getElementById(`pool${poolNum}-24hour`).textContent = avg24h > 0 ? Math.round(avg24h) + 'ms' : '--';
-                
-                // Update request count
+                document.getElementById(`${safeId}-24hour`).textContent = avg24h > 0 ? Math.round(avg24h) + 'ms' : '--';
+
                 const count = data['24hour'] ? (data['24hour'].count || 0) : 0;
-                document.getElementById(`pool${poolNum}-count`).textContent = count;
+                document.getElementById(`${safeId}-count`).textContent = count;
             }
         }
         
         function updateComparisonChart(stats) {
-            const pools = ['qgis-pool1', 'qgis-pool2', 'qgis-pool3'];
+            if (!window._poolConfig) return;
             const timeframes = ['10min', '30min', '1hour', '24hour'];
-            
-            pools.forEach((pool, index) => {
-                if (stats[pool] && stats[pool]['10min']) {
+
+            window._poolConfig.forEach((pool, index) => {
+                // Ensure dataset exists
+                if (!responseComparisonChart.data.datasets[index]) return;
+
+                const key = pool.key;
+                if (stats[key] && stats[key]['10min']) {
                     const data = timeframes.map(tf => {
-                        if (stats[pool][tf] && stats[pool][tf].avg) {
-                            return Math.round(stats[pool][tf].avg);
+                        if (stats[key][tf] && stats[key][tf].avg) {
+                            return Math.round(stats[key][tf].avg);
                         }
                         return 0;
                     });
                     responseComparisonChart.data.datasets[index].data = data;
                 }
             });
-            
+
             responseComparisonChart.update();
         }
         
@@ -2428,14 +2244,28 @@
             });
         }
         
+        // Helper: build user filter query params for Request History tab
+        function reqUserParams() {
+            const ia = document.getElementById('req-include-admin').checked ? '1' : '0';
+            const ian = document.getElementById('req-include-anonymous').checked ? '1' : '0';
+            return `&include_admin=${ia}&include_anonymous=${ian}`;
+        }
+
+        // Helper: build user filter query params for Analytics tab
+        function analyticsUserParams() {
+            const ia = document.getElementById('analytics-include-admin').checked ? '1' : '0';
+            const ian = document.getElementById('analytics-include-anonymous').checked ? '1' : '0';
+            return `&include_admin=${ia}&include_anonymous=${ian}`;
+        }
+
         // Request History Functions
         async function loadRequestHistory() {
             const project = document.getElementById('filter-project').value;
             const pool = document.getElementById('filter-pool').value;
             const days = document.getElementById('filter-days').value;
-            
+
             try {
-                const response = await fetch(`/api/requests/history?project=${project}&pool=${pool}&days=${days}`);
+                const response = await fetch(`/api/requests/history?project=${project}&pool=${pool}&days=${days}${reqUserParams()}`);
                 const data = await response.json();
                 
                 const tbody = document.getElementById('requestsTableBody');
@@ -2475,7 +2305,7 @@
             const days = document.getElementById('filter-days').value;
             
             try {
-                const response = await fetch(`/api/requests/stats?project=${project}&days=${days}`);
+                const response = await fetch(`/api/requests/stats?project=${project}&days=${days}${reqUserParams()}`);
                 const data = await response.json();
                 
                 // Update hourly chart
@@ -2491,7 +2321,7 @@
                 
                 // Update user activity with its own timeframe
                 const userDays = timeframeToDays(currentUserStatsTimeframe);
-                const userResponse = await fetch(`/api/requests/stats?project=${project}&days=${userDays}`);
+                const userResponse = await fetch(`/api/requests/stats?project=${project}&days=${userDays}${reqUserParams()}`);
                 const userData = await userResponse.json();
                 
                 // Store and render users
@@ -2500,7 +2330,7 @@
                 
                 // Update project stats with its own timeframe
                 const projectDays = timeframeToDays(currentProjectStatsTimeframe);
-                const projectResponse = await fetch(`/api/requests/stats?project=all&days=${projectDays}`);
+                const projectResponse = await fetch(`/api/requests/stats?project=all&days=${projectDays}${reqUserParams()}`);
                 const projectData = await projectResponse.json();
                 
                 // Store and render projects
@@ -2621,12 +2451,8 @@
             performanceTrendsChart.options.scales.y.title.text = t('chart_response_time_ms');
             performanceTrendsChart.update();
 
-            // Response distribution
-            responseDistributionChart.data.datasets[0].label = t('chart_num_requests');
-            responseDistributionChart.update();
-
             // Peak hours
-            peakHoursChart.data.datasets[0].label = t('chart_avg_response');
+            peakHoursChart.data.datasets[0].label = t('chart_num_requests');
             peakHoursChart.update();
 
             // Slowest projects
@@ -2644,9 +2470,105 @@
             volumePerformanceChart.update();
 
             // Day of week
-            dayOfWeekChart.data.datasets[0].label = t('chart_avg_response_ms');
+            dayOfWeekChart.data.datasets[0].label = t('chart_num_requests');
             dayOfWeekChart.update();
         }
+
+        // Pool color palette
+        const poolColors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#6366f1', '#14b8a6'];
+
+        // Dynamic pool initialization
+        async function initializePools() {
+            try {
+                const response = await fetch('/api/config/pools');
+                const pools = await response.json();
+                window._poolConfig = pools;
+
+                // --- Generate Response Time Cards ---
+                const cardsContainer = document.getElementById('pool-cards');
+                pools.forEach((pool, i) => {
+                    const color = poolColors[i % poolColors.length];
+                    const safeId = pool.key.replace(/[^a-zA-Z0-9-]/g, '');
+                    const card = document.createElement('div');
+                    card.className = 'card response-card';
+                    card.style.borderLeftColor = color;
+                    card.innerHTML = `
+                        <h2>${pool.display} - <span data-i18n="response_times">${t('response_times')}</span></h2>
+                        <div class="response-time" id="${safeId}-10min">--</div>
+                        <div class="response-label" data-i18n="avg_10min">${t('avg_10min')}</div>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-value" id="${safeId}-30min">--</div>
+                                <div class="stat-label">30 Min</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="${safeId}-1hour">--</div>
+                                <div class="stat-label" data-i18n="1hour">${t('1hour')}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="${safeId}-24hour">--</div>
+                                <div class="stat-label" data-i18n="24hours">${t('24hours')}</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="${safeId}-count">0</div>
+                                <div class="stat-label" data-i18n="requests_today">${t('requests_today')}</div>
+                            </div>
+                        </div>
+                    `;
+                    cardsContainer.appendChild(card);
+                });
+
+                // --- Generate Slowest Request Tables ---
+                const slowestContainer = document.getElementById('slowest-tables');
+                pools.forEach((pool, i) => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'card';
+                    wrapper.style.cssText = 'grid-column: 1 / -1;';
+                    wrapper.innerHTML = `
+                        <h2>${pool.display}: <span data-i18n="slowest_requests_title">${t('slowest_requests_title')}</span></h2>
+                        <table class="slowest-table">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th data-i18n="response_time">${t('response_time')}</th>
+                                    <th>Request ID</th>
+                                    <th data-i18n="type">${t('type')}</th>
+                                    <th data-i18n="project">${t('project')}</th>
+                                    <th>User</th>
+                                    <th>Layer</th>
+                                </tr>
+                            </thead>
+                            <tbody id="slowest-${pool.key}">
+                                <tr><td colspan="7" style="text-align: center; color: #94a3b8;" data-i18n="waiting_data">${t('waiting_data')}</td></tr>
+                            </tbody>
+                        </table>
+                    `;
+                    slowestContainer.appendChild(wrapper);
+                });
+
+                // --- Generate Pool Filter Options ---
+                const filterSelect = document.getElementById('filter-pool');
+                pools.forEach(pool => {
+                    const option = document.createElement('option');
+                    option.value = pool.key;
+                    option.textContent = pool.display;
+                    filterSelect.appendChild(option);
+                });
+
+                // --- Generate Comparison Chart Datasets ---
+                responseComparisonChart.data.datasets = pools.map((pool, i) => ({
+                    label: pool.display,
+                    data: [0, 0, 0, 0],
+                    backgroundColor: poolColors[i % poolColors.length]
+                }));
+                responseComparisonChart.update();
+            } catch (error) {
+                console.error('Error loading pool config:', error);
+            }
+        }
+
+        // Initialize pools, then load the rest
+        initializePools();
 
         // Load projects list on page load
         loadProjectsList();
