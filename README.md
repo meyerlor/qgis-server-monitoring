@@ -1,6 +1,8 @@
 # QGIS Server Monitoring Dashboard
 
-Real-time monitoring dashboard for QGIS Server instances. Collects system metrics (CPU, RAM, Disk I/O), parses QGIS and PHP-FPM logs, tracks response times, and stores historical data in SQLite for analysis.
+A web-based monitoring dashboard designed to track **QGIS Server request performance** across multiple server pools. Parses QGIS Server logs in real time, records every `GetMap` request with its response time, project, user, and layer information, and stores everything in SQLite for long-term analysis. Helps you identify slow projects, heavy users, peak-hour bottlenecks, and per-pool performance differences — so you can find the culprits behind slow map rendering.
+
+System metrics (CPU, RAM) are collected as a secondary data source for correlation.
 
 > **Note:** This project has been developed and tested with [Py-QGIS-Server](https://github.com/3liz/py-qgis-server). If you are running a "pure" QGIS Server setup (e.g. spawned via FastCGI/Apache), the log format and service unit names may differ — small adjustments to the pool configuration and log-parsing patterns in `monitor.py` will be needed.
 
@@ -9,35 +11,45 @@ Real-time monitoring dashboard for QGIS Server instances. Collects system metric
 
 ## Features
 
-- **Live system metrics** — CPU, memory, disk I/O, network usage pushed via WebSocket
-- **QGIS log parsing** — Extracts response times, project names, users, and layer info from QGIS Server logs
-- **Multi-pool support** — Monitor multiple QGIS Server pools side by side
-- **PHP-FPM monitoring** — Tracks errors and warnings from PHP-FPM
-- **Historical analytics** — Performance trends, peak-hour analysis, response-time distributions, per-project rankings
-- **SQLite storage** — Persistent data with configurable retention periods
+### Request performance monitoring
+- **Per-pool response times** — Live average, P95, min/max across configurable time windows (10 min, 30 min, 1 h, 24 h)
+- **Slowest requests** — Rolling top-5 slowest `GetMap` requests per pool with project, user, and layer details
+- **Historical analytics** — Performance trends, peak-hour request volume, day-of-week patterns, per-project rankings, pool comparison
+- **Request history** — Searchable log of individual requests with filters for project, pool, and time range
+- **User & project breakdowns** — Most active users, slowest projects, request counts
+
+### Dynamic pool support
+- **Configure any number of pools** — Just edit the `QGIS_POOLS` dictionary; the entire dashboard (cards, tables, charts, filters) adapts automatically
+- **Pool comparison chart** — Side-by-side response time comparison across all configured pools
+
+### Filtering & i18n
+- **Admin / anonymous toggles** — Include or exclude admin and anonymous users from all statistics (default: excluded)
+- **German / English** — Full UI localization with language switcher, persisted in browser
+
+### Infrastructure
+- **SQLite storage** — Persistent data with configurable retention (default: 180 days for requests, 30 days for system metrics)
 - **Log rotation handling** — Supports both `create` and `copytruncate` rotation methods
-- **Web-based dashboard** — Single-page UI with charts (Chart.js) and real-time updates (Socket.IO)
+- **Live system metrics** — CPU, memory usage pushed via WebSocket (secondary to request performance)
+- **PHP-FPM monitoring** — Tracks errors and warnings from PHP-FPM logs
+- **Single-page dashboard** — Charts (Chart.js) with real-time updates (Socket.IO)
 
-> **Note:** Requests from the `admin` user and from users that are not logged in (`N/A`) are excluded from all aggregated statistics (performance trends, peak hours, project rankings, etc.). They will still appear in the raw Queries Log.
+## Screenshots
 
-## Screenshots from the Dashboard:
-**Overview:**
+**Live Monitor — per-pool response times & slowest requests:**
 
 <img width="1549" height="983" alt="grafik" src="https://github.com/user-attachments/assets/6211f58f-880e-4be8-8056-d7856ecd46c6" />
 
-**Single requests / most active users + projects**
+**Request History — individual requests, most active users & projects:**
 
 <img width="945" height="1004" alt="grafik" src="https://github.com/user-attachments/assets/0410896b-af5e-4d19-9ed8-7be5554da2a1" />
 
-**Deep performance analysis:**
+**Analytics — performance trends, peak hours, project rankings, pool comparison:**
 
 <img width="936" height="882" alt="grafik" src="https://github.com/user-attachments/assets/f9ebc3ba-e548-4536-9174-6f1302221b42" />
 
-**Historical system data (CPU+RAM):**
+**System History (CPU & RAM):**
 
 <img width="1504" height="898" alt="grafik" src="https://github.com/user-attachments/assets/bc78828a-367d-49d0-a488-773acda886da" />
-
-
 
 ## Prerequisites
 
@@ -116,7 +128,7 @@ Open `monitor.py` and edit the **CONFIGURATION** section at the top of the file.
 
 #### Adding / removing pools
 
-Edit the `QGIS_POOLS` dictionary. Each entry maps a pool name to its systemd service unit and log file path:
+Edit the `QGIS_POOLS` dictionary. Each entry maps a pool name to its systemd service unit and log file path. The dashboard adapts automatically — no frontend changes needed.
 
 ```python
 QGIS_POOLS = {
@@ -124,7 +136,8 @@ QGIS_POOLS = {
         'service_unit': 'qgis.service',
         'log_file': '/var/log/qgis/qgis-server.log',
     },
-    # Add more pools here...
+    # Add or remove pools as needed — the dashboard will
+    # generate cards, tables, filters, and charts dynamically.
 }
 ```
 
