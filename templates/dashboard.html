@@ -456,18 +456,67 @@
                 border-radius: 8px;
             }
         }
+        /* Language Toggle */
+        .header-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            margin-bottom: 30px;
+        }
+
+        .header-row h1 {
+            margin-bottom: 0;
+        }
+
+        .lang-toggle {
+            position: absolute;
+            right: 0;
+            display: flex;
+            gap: 4px;
+            background: #1e293b;
+            border-radius: 8px;
+            padding: 4px;
+        }
+
+        .lang-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .lang-btn.active {
+            background: #334155;
+            color: #60a5fa;
+        }
+
+        .lang-btn:hover:not(.active) {
+            color: #e2e8f0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🖥️ GIS Monitoring Dashboard</h1>
+        <div class="header-row">
+            <h1>🖥️ GIS Monitoring Dashboard</h1>
+            <div class="lang-toggle">
+                <button class="lang-btn" onclick="setLanguage('de')">DE</button>
+                <button class="lang-btn" onclick="setLanguage('en')">EN</button>
+            </div>
+        </div>
         
         <!-- Tab Navigation -->
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('live')">📊 Live Monitor</button>
-            <button class="tab" onclick="switchTab('requests')">📝 Request History</button>
-            <button class="tab" onclick="switchTab('analytics')">📈 Analytics</button>
-            <button class="tab" onclick="switchTab('system')">💻 System History</button>
+            <button class="tab active" onclick="switchTab('live')" data-i18n="tab_live">📊 Live Monitor</button>
+            <button class="tab" onclick="switchTab('requests')" data-i18n="tab_requests">📝 Request History</button>
+            <button class="tab" onclick="switchTab('analytics')" data-i18n="tab_analytics">📈 Analytics</button>
+            <button class="tab" onclick="switchTab('system')" data-i18n="tab_system">💻 System History</button>
         </div>
         
         <!-- Tab 1: Live Monitor -->
@@ -475,10 +524,10 @@
             <div class="dashboard">
                 <!-- Response Time Cards for each pool -->
                 <div class="card response-card">
-                    <h2>⚡ Pool 1 - Response Zeiten</h2>
+                    <h2 data-i18n="pool1_response">⚡ Pool 1 - Response Zeiten</h2>
                     <div class="response-time" id="pool1-10min">--</div>
-                    <div class="response-label">Durchschnitt (10 Min)</div>
-                    
+                    <div class="response-label" data-i18n="avg_10min">Durchschnitt (10 Min)</div>
+
                     <div class="stats-grid">
                         <div class="stat-item">
                             <div class="stat-value" id="pool1-30min">--</div>
@@ -486,24 +535,24 @@
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="pool1-1hour">--</div>
-                            <div class="stat-label">1 Stunde</div>
+                            <div class="stat-label" data-i18n="1hour">1 Stunde</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="pool1-24hour">--</div>
-                            <div class="stat-label">24 Stunden</div>
+                            <div class="stat-label" data-i18n="24hours">24 Stunden</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="pool1-count">0</div>
-                            <div class="stat-label">Requests heute</div>
+                            <div class="stat-label" data-i18n="requests_today">Requests heute</div>
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="card response-card pool2">
-                    <h2>⚡ Pool 2 - Response Zeiten</h2>
+                    <h2 data-i18n="pool2_response">⚡ Pool 2 - Response Zeiten</h2>
                     <div class="response-time" id="pool2-10min">--</div>
-                    <div class="response-label">Durchschnitt (10 Min)</div>
-                    
+                    <div class="response-label" data-i18n="avg_10min">Durchschnitt (10 Min)</div>
+
                     <div class="stats-grid">
                         <div class="stat-item">
                             <div class="stat-value" id="pool2-30min">--</div>
@@ -511,24 +560,24 @@
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="pool2-1hour">--</div>
-                            <div class="stat-label">1 Stunde</div>
+                            <div class="stat-label" data-i18n="1hour">1 Stunde</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="pool2-24hour">--</div>
-                            <div class="stat-label">24 Stunden</div>
+                            <div class="stat-label" data-i18n="24hours">24 Stunden</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="pool2-count">0</div>
-                            <div class="stat-label">Requests heute</div>
+                            <div class="stat-label" data-i18n="requests_today">Requests heute</div>
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="card response-card pool3">
-                    <h2>⚡ Pool 3 - Response Zeiten</h2>
+                    <h2 data-i18n="pool3_response">⚡ Pool 3 - Response Zeiten</h2>
                     <div class="response-time" id="pool3-10min">--</div>
-                    <div class="response-label">Durchschnitt (10 Min)</div>
-                    
+                    <div class="response-label" data-i18n="avg_10min">Durchschnitt (10 Min)</div>
+
                     <div class="stats-grid">
                         <div class="stat-item">
                             <div class="stat-value" id="pool3-30min">--</div>
@@ -536,35 +585,35 @@
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="pool3-1hour">--</div>
-                            <div class="stat-label">1 Stunde</div>
+                            <div class="stat-label" data-i18n="1hour">1 Stunde</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="pool3-24hour">--</div>
-                            <div class="stat-label">24 Stunden</div>
+                            <div class="stat-label" data-i18n="24hours">24 Stunden</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="pool3-count">0</div>
-                            <div class="stat-label">Requests heute</div>
+                            <div class="stat-label" data-i18n="requests_today">Requests heute</div>
                         </div>
                     </div>
                 </div>
                 
                 <!-- CPU Card -->
                 <div class="card">
-                    <h2>⚡ CPU Auslastung</h2>
+                    <h2 data-i18n="cpu_usage">⚡ CPU Auslastung</h2>
                     <div class="metric">
-                        <span class="metric-label">Gesamt</span>
+                        <span class="metric-label" data-i18n="total">Gesamt</span>
                         <span class="metric-value" id="cpuTotal">--</span>
                     </div>
                     <div class="metric">
-                        <span class="metric-label">Kerne</span>
+                        <span class="metric-label" data-i18n="cores">Kerne</span>
                         <span class="metric-value" id="cpuCores">--</span>
                     </div>
                     <div style="margin: 10px 0; display: flex; gap: 5px; flex-wrap: wrap;">
                         <button class="timeframe-btn active" onclick="setSystemTimeframe('5min')">5 Min</button>
                         <button class="timeframe-btn" onclick="setSystemTimeframe('10min')">10 Min</button>
                         <button class="timeframe-btn" onclick="setSystemTimeframe('30min')">30 Min</button>
-                        <button class="timeframe-btn" onclick="setSystemTimeframe('1hour')">1 Std</button>
+                        <button class="timeframe-btn" onclick="setSystemTimeframe('1hour')" data-i18n="1hr">1 Std</button>
                     </div>
                     <div class="chart-container">
                         <canvas id="cpuChart"></canvas>
@@ -573,17 +622,17 @@
                 
                 <!-- Memory Card -->
                 <div class="card">
-                    <h2>💾 RAM Nutzung</h2>
+                    <h2 data-i18n="ram_usage">💾 RAM Nutzung</h2>
                     <div class="metric">
-                        <span class="metric-label">Verwendet</span>
+                        <span class="metric-label" data-i18n="used">Verwendet</span>
                         <span class="metric-value" id="memUsed">--</span>
                     </div>
                     <div class="metric">
-                        <span class="metric-label">Verfügbar</span>
+                        <span class="metric-label" data-i18n="available">Verfügbar</span>
                         <span class="metric-value" id="memAvailable">--</span>
                     </div>
                     <div class="metric">
-                        <span class="metric-label">Gesamt</span>
+                        <span class="metric-label" data-i18n="total">Gesamt</span>
                         <span class="metric-value" id="memTotal">--</span>
                     </div>
                     <div class="progress-bar">
@@ -593,7 +642,7 @@
                         <button class="timeframe-btn active" onclick="setSystemTimeframe('5min')">5 Min</button>
                         <button class="timeframe-btn" onclick="setSystemTimeframe('10min')">10 Min</button>
                         <button class="timeframe-btn" onclick="setSystemTimeframe('30min')">30 Min</button>
-                        <button class="timeframe-btn" onclick="setSystemTimeframe('1hour')">1 Std</button>
+                        <button class="timeframe-btn" onclick="setSystemTimeframe('1hour')" data-i18n="1hr">1 Std</button>
                     </div>
                     <div class="chart-container">
                         <canvas id="memChart"></canvas>
@@ -602,7 +651,7 @@
                 
                 <!-- Network Card with Chart -->
 <div class="card">
-                    <h2>🌐 Network Traffic (Live)</h2>
+                    <h2 data-i18n="network_live">🌐 Network Traffic (Live)</h2>
                     <div class="chart-container" style="height: 200px;">
                         <canvas id="networkLiveChart"></canvas>
                     </div>
@@ -610,7 +659,7 @@
                 
                 <!-- Response Time Comparison Chart -->
                 <div class="card" style="grid-column: 1 / -1;">
-                    <h2>📊 Response Zeit Vergleich (Durchschnitt verschiedener Zeitfenster)</h2>
+                    <h2 data-i18n="response_comparison">📊 Response Zeit Vergleich (Durchschnitt verschiedener Zeitfenster)</h2>
                     <div class="chart-container" style="height: 350px;">
                         <canvas id="responseComparisonChart"></canvas>
                     </div>
@@ -618,72 +667,72 @@
                 
                 <!-- Slowest Requests - Pool 1 -->
                 <div class="card" style="grid-column: 1 / -1;">
-                    <h2>🐌 Pool 1: Top 5 Langsamste Requests (letzte 10 Min)</h2>
+                    <h2 data-i18n="slowest_pool1">🐌 Pool 1: Top 5 Langsamste Requests (letzte 10 Min)</h2>
                     <table class="slowest-table">
                         <thead>
                             <tr>
                                 <th>Timestamp</th>
-                                <th>Response Zeit</th>
+                                <th data-i18n="response_time">Response Zeit</th>
                                 <th>Request ID</th>
-                                <th>Typ</th>
-                                <th>Projekt</th>
+                                <th data-i18n="type">Typ</th>
+                                <th data-i18n="project">Projekt</th>
                                 <th>User</th>
                                 <th>Layer</th>
                             </tr>
                         </thead>
                         <tbody id="slowest-pool1">
-                            <tr><td colspan="7" style="text-align: center; color: #94a3b8;">Warte auf Daten...</td></tr>
+                            <tr><td colspan="7" style="text-align: center; color: #94a3b8;" data-i18n="waiting_data">Warte auf Daten...</td></tr>
                         </tbody>
                     </table>
                 </div>
                 
                 <!-- Slowest Requests - Pool 2 -->
                 <div class="card" style="grid-column: 1 / -1;">
-                    <h2>🐌 Pool 2: Top 5 Langsamste Requests (letzte 10 Min)</h2>
+                    <h2 data-i18n="slowest_pool2">🐌 Pool 2: Top 5 Langsamste Requests (letzte 10 Min)</h2>
                     <table class="slowest-table">
                         <thead>
                             <tr>
                                 <th>Timestamp</th>
-                                <th>Response Zeit</th>
+                                <th data-i18n="response_time">Response Zeit</th>
                                 <th>Request ID</th>
-                                <th>Typ</th>
-                                <th>Projekt</th>
+                                <th data-i18n="type">Typ</th>
+                                <th data-i18n="project">Projekt</th>
                                 <th>User</th>
                                 <th>Layer</th>
                             </tr>
                         </thead>
                         <tbody id="slowest-pool2">
-                            <tr><td colspan="7" style="text-align: center; color: #94a3b8;">Warte auf Daten...</td></tr>
+                            <tr><td colspan="7" style="text-align: center; color: #94a3b8;" data-i18n="waiting_data">Warte auf Daten...</td></tr>
                         </tbody>
                     </table>
                 </div>
                 
                 <!-- Slowest Requests - Pool 3 -->
                 <div class="card" style="grid-column: 1 / -1;">
-                    <h2>🐌 Pool 3: Top 5 Langsamste Requests (letzte 10 Min)</h2>
+                    <h2 data-i18n="slowest_pool3">🐌 Pool 3: Top 5 Langsamste Requests (letzte 10 Min)</h2>
                     <table class="slowest-table">
                         <thead>
                             <tr>
                                 <th>Timestamp</th>
-                                <th>Response Zeit</th>
+                                <th data-i18n="response_time">Response Zeit</th>
                                 <th>Request ID</th>
-                                <th>Typ</th>
-                                <th>Projekt</th>
+                                <th data-i18n="type">Typ</th>
+                                <th data-i18n="project">Projekt</th>
                                 <th>User</th>
                                 <th>Layer</th>
                             </tr>
                         </thead>
                         <tbody id="slowest-pool3">
-                            <tr><td colspan="7" style="text-align: center; color: #94a3b8;">Warte auf Daten...</td></tr>
+                            <tr><td colspan="7" style="text-align: center; color: #94a3b8;" data-i18n="waiting_data">Warte auf Daten...</td></tr>
                         </tbody>
                     </table>
                 </div>
                 
                 <!-- Critical Issues -->
                 <div class="card" style="grid-column: 1 / -1;">
-                    <h2>⚠️ Kritische Fehler & Warnungen</h2>
+                    <h2 data-i18n="critical_issues">⚠️ Kritische Fehler & Warnungen</h2>
                     <div class="issues-list" id="issuesList">
-                        <div class="no-data">Keine kritischen Probleme</div>
+                        <div class="no-data" data-i18n="no_issues">Keine kritischen Probleme</div>
                     </div>
                 </div>
             </div>
@@ -693,32 +742,32 @@
         <div id="tab-requests" class="tab-content">
             <div class="filters">
                 <div class="filter-group">
-                    <label class="filter-label">Projekt</label>
+                    <label class="filter-label" data-i18n="project">Projekt</label>
                     <select id="filter-project" onchange="loadRequestHistory()">
-                        <option value="all">Alle Projekte</option>
+                        <option value="all" data-i18n="all_projects">Alle Projekte</option>
                     </select>
                 </div>
                 <div class="filter-group">
                     <label class="filter-label">Pool</label>
                     <select id="filter-pool" onchange="loadRequestHistory()">
-                        <option value="all">Alle Pools</option>
+                        <option value="all" data-i18n="all_pools">Alle Pools</option>
                         <option value="qgis-pool1">Pool 1</option>
                         <option value="qgis-pool2">Pool 2</option>
                         <option value="qgis-pool3">Pool 3</option>
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label class="filter-label">Zeitraum</label>
+                    <label class="filter-label" data-i18n="timerange">Zeitraum</label>
                     <select id="filter-days" onchange="loadRequestHistory()">
-                        <option value="1">Heute</option>
-                        <option value="7" selected>Letzte 7 Tage</option>
-                        <option value="30">Letzte 30 Tage</option>
+                        <option value="1" data-i18n="today">Heute</option>
+                        <option value="7" selected data-i18n="last_7_days">Letzte 7 Tage</option>
+                        <option value="30" data-i18n="last_30_days">Letzte 30 Tage</option>
                     </select>
                 </div>
             </div>
             
             <div class="card">
-                <h2>📊 Requests pro Stunde</h2>
+                <h2 data-i18n="requests_per_hour">📊 Requests pro Stunde</h2>
                 <div class="chart-container" style="height: 300px;">
                     <canvas id="requestsPerHourChart"></canvas>
                 </div>
@@ -727,76 +776,76 @@
             <div class="stats-container">
                 <div class="stat-card">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <h3>👥 User Aktivität</h3>
+                        <h3 data-i18n="user_activity">👥 User Aktivität</h3>
                         <div style="display: flex; gap: 5px;">
-                            <button class="timeframe-btn active" onclick="setUserStatsTimeframe('today')">Heute</button>
-                            <button class="timeframe-btn" onclick="setUserStatsTimeframe('week')">Woche</button>
-                            <button class="timeframe-btn" onclick="setUserStatsTimeframe('month')">Monat</button>
-                            <button class="timeframe-btn" onclick="setUserStatsTimeframe('all')">Gesamt</button>
+                            <button class="timeframe-btn active" onclick="setUserStatsTimeframe('today')" data-i18n="today">Heute</button>
+                            <button class="timeframe-btn" onclick="setUserStatsTimeframe('week')" data-i18n="week">Woche</button>
+                            <button class="timeframe-btn" onclick="setUserStatsTimeframe('month')" data-i18n="month">Monat</button>
+                            <button class="timeframe-btn" onclick="setUserStatsTimeframe('all')" data-i18n="total">Gesamt</button>
                         </div>
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px; font-size: 0.9em;">
-                        <span style="color: #94a3b8; margin-right: 5px;">Sortieren:</span>
+                        <span style="color: #94a3b8; margin-right: 5px;" data-i18n="sort_by">Sortieren:</span>
                         <button class="sort-btn" onclick="sortUsers('name')">
                             <span id="user-sort-name">Name</span>
                         </button>
                         <button class="sort-btn" onclick="sortUsers('count')">
-                            <span id="user-sort-count">Anzahl ▼</span>
+                            <span id="user-sort-count" data-i18n="count_desc">Anzahl ▼</span>
                         </button>
                         <button class="sort-btn" onclick="sortUsers('avg_time')">
-                            <span id="user-sort-avg_time">Ø Zeit</span>
+                            <span id="user-sort-avg_time" data-i18n="avg_time_label">Ø Zeit</span>
                         </button>
                     </div>
                     <ul class="stat-list" id="userActivityList">
-                        <li class="loading">Lade Daten...</li>
+                        <li class="loading" data-i18n="loading">Lade Daten...</li>
                     </ul>
                 </div>
                 
                 <div class="stat-card">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <h3>📁 Projekt Performance</h3>
+                        <h3 data-i18n="project_performance">📁 Projekt Performance</h3>
                         <div style="display: flex; gap: 5px;">
-                            <button class="timeframe-btn active" onclick="setProjectStatsTimeframe('today')">Heute</button>
-                            <button class="timeframe-btn" onclick="setProjectStatsTimeframe('week')">Woche</button>
-                            <button class="timeframe-btn" onclick="setProjectStatsTimeframe('month')">Monat</button>
-                            <button class="timeframe-btn" onclick="setProjectStatsTimeframe('all')">Gesamt</button>
+                            <button class="timeframe-btn active" onclick="setProjectStatsTimeframe('today')" data-i18n="today">Heute</button>
+                            <button class="timeframe-btn" onclick="setProjectStatsTimeframe('week')" data-i18n="week">Woche</button>
+                            <button class="timeframe-btn" onclick="setProjectStatsTimeframe('month')" data-i18n="month">Monat</button>
+                            <button class="timeframe-btn" onclick="setProjectStatsTimeframe('all')" data-i18n="total">Gesamt</button>
                         </div>
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px; font-size: 0.9em;">
-                        <span style="color: #94a3b8; margin-right: 5px;">Sortieren:</span>
+                        <span style="color: #94a3b8; margin-right: 5px;" data-i18n="sort_by">Sortieren:</span>
                         <button class="sort-btn" onclick="sortProjects('name')">
                             <span id="project-sort-name">Name</span>
                         </button>
                         <button class="sort-btn" onclick="sortProjects('count')">
-                            <span id="project-sort-count">Anzahl ▼</span>
+                            <span id="project-sort-count" data-i18n="count_desc">Anzahl ▼</span>
                         </button>
                         <button class="sort-btn" onclick="sortProjects('avg_time')">
-                            <span id="project-sort-avg_time">Ø Zeit</span>
+                            <span id="project-sort-avg_time" data-i18n="avg_time_label">Ø Zeit</span>
                         </button>
                     </div>
                     <ul class="stat-list" id="projectStatsList">
-                        <li class="loading">Lade Daten...</li>
+                        <li class="loading" data-i18n="loading">Lade Daten...</li>
                     </ul>
                 </div>
             </div>
             
             <div class="card" style="margin-top: 20px;">
-                <h2>📝 Request Details (neueste 1000)</h2>
+                <h2 data-i18n="request_details">📝 Request Details (neueste 1000)</h2>
                 <div style="overflow-x: auto;">
                     <table class="data-table" id="requestsTable">
                         <thead>
                             <tr>
                                 <th onclick="sortTable('timestamp')">Timestamp <span class="sort-icon">↕</span></th>
                                 <th onclick="sortTable('pool')">Pool <span class="sort-icon">↕</span></th>
-                                <th onclick="sortTable('project')">Projekt <span class="sort-icon">↕</span></th>
+                                <th onclick="sortTable('project')" data-i18n-html="project_sort">Projekt <span class="sort-icon">↕</span></th>
                                 <th onclick="sortTable('user')">User <span class="sort-icon">↕</span></th>
-                                <th onclick="sortTable('request_type')">Typ <span class="sort-icon">↕</span></th>
-                                <th onclick="sortTable('response_time_ms')">Dauer (ms) <span class="sort-icon">↕</span></th>
+                                <th onclick="sortTable('request_type')" data-i18n-html="type_sort">Typ <span class="sort-icon">↕</span></th>
+                                <th onclick="sortTable('response_time_ms')" data-i18n-html="duration_sort">Dauer (ms) <span class="sort-icon">↕</span></th>
                                 <th>Layer</th>
                             </tr>
                         </thead>
                         <tbody id="requestsTableBody">
-                            <tr><td colspan="7" class="loading">Lade Daten...</td></tr>
+                            <tr><td colspan="7" class="loading" data-i18n="loading">Lade Daten...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -807,37 +856,37 @@
         <div id="tab-analytics" class="tab-content">
             <div class="filters" style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end;">
                 <div class="filter-group">
-                    <label class="filter-label">Von Datum</label>
+                    <label class="filter-label" data-i18n="from_date">Von Datum</label>
                     <input type="date" id="analytics-date-from" style="padding: 8px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 4px;">
                 </div>
                 <div class="filter-group">
-                    <label class="filter-label">Bis Datum</label>
+                    <label class="filter-label" data-i18n="to_date">Bis Datum</label>
                     <input type="date" id="analytics-date-to" style="padding: 8px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 4px;">
                 </div>
                 <div class="filter-group">
-                    <label class="filter-label">Projekt</label>
+                    <label class="filter-label" data-i18n="project">Projekt</label>
                     <select id="analytics-project" style="padding: 8px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 4px;">
-                        <option value="all">Alle Projekte</option>
+                        <option value="all" data-i18n="all_projects">Alle Projekte</option>
                     </select>
                 </div>
                 <div class="filter-group">
                     <label class="filter-label">Aggregation</label>
                     <select id="analytics-aggregation" style="padding: 8px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 4px;">
-                        <option value="hour">Stündlich</option>
-                        <option value="day" selected>Täglich</option>
-                        <option value="week">Wöchentlich</option>
-                        <option value="month">Monatlich</option>
+                        <option value="hour" data-i18n="hourly">Stündlich</option>
+                        <option value="day" selected data-i18n="daily">Täglich</option>
+                        <option value="week" data-i18n="weekly">Wöchentlich</option>
+                        <option value="month" data-i18n="monthly">Monatlich</option>
                     </select>
                 </div>
-                <button onclick="loadAnalytics()" style="padding: 8px 16px; background: #3b82f6; border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: 600;">
+                <button onclick="loadAnalytics()" style="padding: 8px 16px; background: #3b82f6; border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: 600;" data-i18n="refresh_analytics">
                     📊 Analyse aktualisieren
                 </button>
             </div>
             
             <!-- Performance Trends -->
             <div class="card" style="margin-top: 20px;">
-                <h2>📈 Performance Trends über Zeit</h2>
-                <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                <h2 data-i18n="perf_trends">📈 Performance Trends über Zeit</h2>
+                <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="perf_trends_desc">
                     Durchschnittliche und P95 (95. Perzentil) Response-Zeit über den gewählten Zeitraum
                 </p>
                 <div class="chart-container" style="height: 350px;">
@@ -848,8 +897,8 @@
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; margin-top: 20px;">
                 <!-- Response Time Distribution -->
                 <div class="card">
-                    <h2>📊 Response-Zeit Verteilung</h2>
-                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                    <h2 data-i18n="response_dist">📊 Response-Zeit Verteilung</h2>
+                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="response_dist_desc">
                         Wie sind die Response-Zeiten verteilt?
                     </p>
                     <div class="chart-container" style="height: 300px;">
@@ -859,8 +908,8 @@
                 
                 <!-- Peak Hours Heatmap -->
                 <div class="card">
-                    <h2>🔥 Peak Hours (Durchschnitt pro Stunde)</h2>
-                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                    <h2 data-i18n="peak_hours">🔥 Peak Hours (Durchschnitt pro Stunde)</h2>
+                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="peak_hours_desc">
                         Zu welchen Uhrzeiten sind Requests am langsamsten?
                     </p>
                     <div class="chart-container" style="height: 300px;">
@@ -872,8 +921,8 @@
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; margin-top: 20px;">
                 <!-- Top Slowest Projects -->
                 <div class="card">
-                    <h2>🐌 Langsamste Projekte</h2>
-                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                    <h2 data-i18n="slowest_projects">🐌 Langsamste Projekte</h2>
+                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="slowest_projects_desc">
                         Projekte sortiert nach durchschnittlicher Response-Zeit
                     </p>
                     <div class="chart-container" style="height: 350px;">
@@ -883,8 +932,8 @@
                 
                 <!-- Pool Performance Comparison -->
                 <div class="card">
-                    <h2>⚖️ Pool Performance Vergleich</h2>
-                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                    <h2 data-i18n="pool_comparison">⚖️ Pool Performance Vergleich</h2>
+                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="pool_comparison_desc">
                         Durchschnittliche Response-Zeit pro Pool
                     </p>
                     <div class="chart-container" style="height: 350px;">
@@ -895,8 +944,8 @@
             
             <!-- Request Volume vs Performance -->
             <div class="card" style="margin-top: 20px;">
-                <h2>📊 Request-Volume vs Performance</h2>
-                <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                <h2 data-i18n="volume_vs_perf">📊 Request-Volume vs Performance</h2>
+                <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="volume_vs_perf_desc">
                     Korrelation zwischen Anzahl Requests und durchschnittlicher Response-Zeit
                 </p>
                 <div class="chart-container" style="height: 350px;">
@@ -906,8 +955,8 @@
             
             <!-- Day of Week Analysis -->
             <div class="card" style="margin-top: 20px;">
-                <h2>📅 Wochentag-Analyse</h2>
-                <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;">
+                <h2 data-i18n="day_of_week">📅 Wochentag-Analyse</h2>
+                <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="day_of_week_desc">
                     Performance-Unterschiede nach Wochentag
                 </p>
                 <div class="chart-container" style="height: 300px;">
@@ -920,25 +969,25 @@
         <div id="tab-system" class="tab-content">
             <div class="filters">
                 <div class="filter-group">
-                    <label class="filter-label">Zeitraum</label>
+                    <label class="filter-label" data-i18n="timerange">Zeitraum</label>
                     <select id="filter-system-hours" onchange="loadSystemHistory()">
-                        <option value="1">Letzte Stunde</option>
-                        <option value="6">Letzte 6 Stunden</option>
-                        <option value="24" selected>Letzte 24 Stunden</option>
-                        <option value="168">Letzte 7 Tage</option>
+                        <option value="1" data-i18n="last_hour">Letzte Stunde</option>
+                        <option value="6" data-i18n="last_6_hours">Letzte 6 Stunden</option>
+                        <option value="24" selected data-i18n="last_24_hours">Letzte 24 Stunden</option>
+                        <option value="168" data-i18n="last_7_days">Letzte 7 Tage</option>
                     </select>
                 </div>
             </div>
             
             <div class="card">
-                <h2>⚡ CPU Auslastung (Historisch)</h2>
+                <h2 data-i18n="cpu_history">⚡ CPU Auslastung (Historisch)</h2>
                 <div class="chart-container" style="height: 300px;">
                     <canvas id="cpuHistoryChart"></canvas>
                 </div>
             </div>
             
             <div class="card">
-                <h2>💾 RAM Nutzung (Historisch)</h2>
+                <h2 data-i18n="ram_history">💾 RAM Nutzung (Historisch)</h2>
                 <div class="chart-container" style="height: 300px;">
                     <canvas id="memHistoryChart"></canvas>
                 </div>
@@ -947,6 +996,259 @@
     </div>
     
     <script>
+        // =====================================================================
+        // i18n – Translations
+        // =====================================================================
+        const translations = {
+            de: {
+                // Tabs
+                tab_live: '📊 Live Monitor',
+                tab_requests: '📝 Request History',
+                tab_analytics: '📈 Analytics',
+                tab_system: '💻 System History',
+                // Pool cards
+                pool1_response: '⚡ Pool 1 - Response Zeiten',
+                pool2_response: '⚡ Pool 2 - Response Zeiten',
+                pool3_response: '⚡ Pool 3 - Response Zeiten',
+                avg_10min: 'Durchschnitt (10 Min)',
+                '1hour': '1 Stunde',
+                '24hours': '24 Stunden',
+                requests_today: 'Requests heute',
+                // System cards
+                cpu_usage: '⚡ CPU Auslastung',
+                total: 'Gesamt',
+                cores: 'Kerne',
+                '1hr': '1 Std',
+                ram_usage: '💾 RAM Nutzung',
+                used: 'Verwendet',
+                available: 'Verfügbar',
+                network_live: '🌐 Network Traffic (Live)',
+                // Comparison / slowest
+                response_comparison: '📊 Response Zeit Vergleich (Durchschnitt verschiedener Zeitfenster)',
+                slowest_pool1: '🐌 Pool 1: Top 5 Langsamste Requests (letzte 10 Min)',
+                slowest_pool2: '🐌 Pool 2: Top 5 Langsamste Requests (letzte 10 Min)',
+                slowest_pool3: '🐌 Pool 3: Top 5 Langsamste Requests (letzte 10 Min)',
+                response_time: 'Response Zeit',
+                type: 'Typ',
+                project: 'Projekt',
+                waiting_data: 'Warte auf Daten...',
+                no_data_available: 'Keine Daten verfügbar',
+                critical_issues: '⚠️ Kritische Fehler & Warnungen',
+                no_issues: 'Keine kritischen Probleme',
+                // Request History filters
+                all_projects: 'Alle Projekte',
+                all_pools: 'Alle Pools',
+                timerange: 'Zeitraum',
+                today: 'Heute',
+                last_7_days: 'Letzte 7 Tage',
+                last_30_days: 'Letzte 30 Tage',
+                requests_per_hour: '📊 Requests pro Stunde',
+                user_activity: '👥 User Aktivität',
+                week: 'Woche',
+                month: 'Monat',
+                sort_by: 'Sortieren:',
+                count_label: 'Anzahl',
+                count_desc: 'Anzahl ▼',
+                avg_time_label: 'Ø Zeit',
+                loading: 'Lade Daten...',
+                no_data: 'Keine Daten',
+                project_performance: '📁 Projekt Performance',
+                request_details: '📝 Request Details (neueste 1000)',
+                project_sort: 'Projekt <span class="sort-icon">↕</span>',
+                type_sort: 'Typ <span class="sort-icon">↕</span>',
+                duration_sort: 'Dauer (ms) <span class="sort-icon">↕</span>',
+                no_data_period: 'Keine Daten für diesen Zeitraum',
+                error_loading: 'Fehler beim Laden der Daten',
+                // Analytics
+                from_date: 'Von Datum',
+                to_date: 'Bis Datum',
+                hourly: 'Stündlich',
+                daily: 'Täglich',
+                weekly: 'Wöchentlich',
+                monthly: 'Monatlich',
+                refresh_analytics: '📊 Analyse aktualisieren',
+                perf_trends: '📈 Performance Trends über Zeit',
+                perf_trends_desc: 'Durchschnittliche und P95 (95. Perzentil) Response-Zeit über den gewählten Zeitraum',
+                response_dist: '📊 Response-Zeit Verteilung',
+                response_dist_desc: 'Wie sind die Response-Zeiten verteilt?',
+                peak_hours: '🔥 Peak Hours (Durchschnitt pro Stunde)',
+                peak_hours_desc: 'Zu welchen Uhrzeiten sind Requests am langsamsten?',
+                slowest_projects: '🐌 Langsamste Projekte',
+                slowest_projects_desc: 'Projekte sortiert nach durchschnittlicher Response-Zeit',
+                pool_comparison: '⚖️ Pool Performance Vergleich',
+                pool_comparison_desc: 'Durchschnittliche Response-Zeit pro Pool',
+                volume_vs_perf: '📊 Request-Volume vs Performance',
+                volume_vs_perf_desc: 'Korrelation zwischen Anzahl Requests und durchschnittlicher Response-Zeit',
+                day_of_week: '📅 Wochentag-Analyse',
+                day_of_week_desc: 'Performance-Unterschiede nach Wochentag',
+                alert_select_period: 'Bitte wähle einen Zeitraum aus!',
+                alert_analytics_error: 'Fehler beim Laden der Analytics-Daten!',
+                // System History
+                last_hour: 'Letzte Stunde',
+                last_6_hours: 'Letzte 6 Stunden',
+                last_24_hours: 'Letzte 24 Stunden',
+                cpu_history: '⚡ CPU Auslastung (Historisch)',
+                ram_history: '💾 RAM Nutzung (Historisch)',
+                // Chart labels
+                chart_avg: 'Durchschnitt',
+                chart_p95: 'P95 (95. Perzentil)',
+                chart_num_requests: 'Anzahl Requests',
+                chart_avg_response: 'Ø Response Zeit',
+                chart_avg_response_ms: 'Ø Response Zeit (ms)',
+                chart_response_time_ms: 'Response Zeit (ms)',
+                chart_volume_vs_avg: 'Request Volume vs Ø Response Zeit',
+                chart_tooltip_volume: 'Volume: {x} Requests, Ø Zeit: {y}ms',
+                chart_comparison_labels: ['10 Min', '30 Min', '1 Stunde', '24 Stunden'],
+                // Show more/less
+                show_less: '▲ Weniger anzeigen ({n} ausgeblendet)',
+                show_all: '▼ Alle anzeigen ({n} weitere)',
+            },
+            en: {
+                // Tabs
+                tab_live: '📊 Live Monitor',
+                tab_requests: '📝 Request History',
+                tab_analytics: '📈 Analytics',
+                tab_system: '💻 System History',
+                // Pool cards
+                pool1_response: '⚡ Pool 1 - Response Times',
+                pool2_response: '⚡ Pool 2 - Response Times',
+                pool3_response: '⚡ Pool 3 - Response Times',
+                avg_10min: 'Average (10 min)',
+                '1hour': '1 Hour',
+                '24hours': '24 Hours',
+                requests_today: 'Requests today',
+                // System cards
+                cpu_usage: '⚡ CPU Usage',
+                total: 'Total',
+                cores: 'Cores',
+                '1hr': '1 Hr',
+                ram_usage: '💾 RAM Usage',
+                used: 'Used',
+                available: 'Available',
+                network_live: '🌐 Network Traffic (Live)',
+                // Comparison / slowest
+                response_comparison: '📊 Response Time Comparison (Average across time windows)',
+                slowest_pool1: '🐌 Pool 1: Top 5 Slowest Requests (last 10 min)',
+                slowest_pool2: '🐌 Pool 2: Top 5 Slowest Requests (last 10 min)',
+                slowest_pool3: '🐌 Pool 3: Top 5 Slowest Requests (last 10 min)',
+                response_time: 'Response Time',
+                type: 'Type',
+                project: 'Project',
+                waiting_data: 'Waiting for data...',
+                no_data_available: 'No data available',
+                critical_issues: '⚠️ Critical Errors & Warnings',
+                no_issues: 'No critical issues',
+                // Request History filters
+                all_projects: 'All Projects',
+                all_pools: 'All Pools',
+                timerange: 'Time Range',
+                today: 'Today',
+                last_7_days: 'Last 7 Days',
+                last_30_days: 'Last 30 Days',
+                requests_per_hour: '📊 Requests per Hour',
+                user_activity: '👥 User Activity',
+                week: 'Week',
+                month: 'Month',
+                sort_by: 'Sort:',
+                count_label: 'Count',
+                count_desc: 'Count ▼',
+                avg_time_label: 'Ø Time',
+                loading: 'Loading...',
+                no_data: 'No data',
+                project_performance: '📁 Project Performance',
+                request_details: '📝 Request Details (latest 1000)',
+                project_sort: 'Project <span class="sort-icon">↕</span>',
+                type_sort: 'Type <span class="sort-icon">↕</span>',
+                duration_sort: 'Duration (ms) <span class="sort-icon">↕</span>',
+                no_data_period: 'No data for this period',
+                error_loading: 'Error loading data',
+                // Analytics
+                from_date: 'From Date',
+                to_date: 'To Date',
+                hourly: 'Hourly',
+                daily: 'Daily',
+                weekly: 'Weekly',
+                monthly: 'Monthly',
+                refresh_analytics: '📊 Refresh Analytics',
+                perf_trends: '📈 Performance Trends over Time',
+                perf_trends_desc: 'Average and P95 (95th percentile) response time over the selected period',
+                response_dist: '📊 Response Time Distribution',
+                response_dist_desc: 'How are response times distributed?',
+                peak_hours: '🔥 Peak Hours (Average per hour)',
+                peak_hours_desc: 'At which hours are requests slowest?',
+                slowest_projects: '🐌 Slowest Projects',
+                slowest_projects_desc: 'Projects sorted by average response time',
+                pool_comparison: '⚖️ Pool Performance Comparison',
+                pool_comparison_desc: 'Average response time per pool',
+                volume_vs_perf: '📊 Request Volume vs Performance',
+                volume_vs_perf_desc: 'Correlation between request count and average response time',
+                day_of_week: '📅 Day of Week Analysis',
+                day_of_week_desc: 'Performance differences by day of the week',
+                alert_select_period: 'Please select a time period!',
+                alert_analytics_error: 'Error loading analytics data!',
+                // System History
+                last_hour: 'Last Hour',
+                last_6_hours: 'Last 6 Hours',
+                last_24_hours: 'Last 24 Hours',
+                cpu_history: '⚡ CPU Usage (Historical)',
+                ram_history: '💾 RAM Usage (Historical)',
+                // Chart labels
+                chart_avg: 'Average',
+                chart_p95: 'P95 (95th Percentile)',
+                chart_num_requests: 'Number of Requests',
+                chart_avg_response: 'Ø Response Time',
+                chart_avg_response_ms: 'Ø Response Time (ms)',
+                chart_response_time_ms: 'Response Time (ms)',
+                chart_volume_vs_avg: 'Request Volume vs Ø Response Time',
+                chart_tooltip_volume: 'Volume: {x} Requests, Ø Time: {y}ms',
+                chart_comparison_labels: ['10 Min', '30 Min', '1 Hour', '24 Hours'],
+                // Show more/less
+                show_less: '▲ Show less ({n} hidden)',
+                show_all: '▼ Show all ({n} more)',
+            }
+        };
+
+        let currentLang = localStorage.getItem('dashboard_lang')
+            || (navigator.language.startsWith('de') ? 'de' : 'en');
+
+        function t(key) {
+            return (translations[currentLang] && translations[currentLang][key])
+                || (translations['de'][key])
+                || key;
+        }
+
+        function getLocale() {
+            return currentLang === 'de' ? 'de-DE' : 'en-GB';
+        }
+
+        function applyTranslations() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (translations[currentLang][key] !== undefined) {
+                    el.textContent = translations[currentLang][key];
+                }
+            });
+            document.querySelectorAll('[data-i18n-html]').forEach(el => {
+                const key = el.getAttribute('data-i18n-html');
+                if (translations[currentLang][key] !== undefined) {
+                    el.innerHTML = translations[currentLang][key];
+                }
+            });
+            document.documentElement.lang = currentLang;
+            // Update language toggle buttons
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.textContent.trim().toLowerCase() === currentLang);
+            });
+        }
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('dashboard_lang', lang);
+            applyTranslations();
+            updateChartLabels();
+        }
+
+        // =====================================================================
         // Socket.IO connection
         const socket = io('/monitoring');
         
@@ -1027,12 +1329,12 @@
             
             // Update visual indicators
             document.getElementById('user-sort-name').textContent = 'Name';
-            document.getElementById('user-sort-count').textContent = 'Anzahl';
-            document.getElementById('user-sort-avg_time').textContent = 'Ø Zeit';
-            
+            document.getElementById('user-sort-count').textContent = t('count_label');
+            document.getElementById('user-sort-avg_time').textContent = t('avg_time_label');
+
             const arrow = userSortOrder === 'desc' ? ' ▼' : ' ▲';
-            document.getElementById(`user-sort-${userSortBy}`).textContent = 
-                (userSortBy === 'name' ? 'Name' : userSortBy === 'count' ? 'Anzahl' : 'Ø Zeit') + arrow;
+            document.getElementById(`user-sort-${userSortBy}`).textContent =
+                (userSortBy === 'name' ? 'Name' : userSortBy === 'count' ? t('count_label') : t('avg_time_label')) + arrow;
             
             renderUserList();
         }
@@ -1049,12 +1351,12 @@
             
             // Update visual indicators
             document.getElementById('project-sort-name').textContent = 'Name';
-            document.getElementById('project-sort-count').textContent = 'Anzahl';
-            document.getElementById('project-sort-avg_time').textContent = 'Ø Zeit';
-            
+            document.getElementById('project-sort-count').textContent = t('count_label');
+            document.getElementById('project-sort-avg_time').textContent = t('avg_time_label');
+
             const arrow = projectSortOrder === 'desc' ? ' ▼' : ' ▲';
-            document.getElementById(`project-sort-${projectSortBy}`).textContent = 
-                (projectSortBy === 'name' ? 'Name' : projectSortBy === 'count' ? 'Anzahl' : 'Ø Zeit') + arrow;
+            document.getElementById(`project-sort-${projectSortBy}`).textContent =
+                (projectSortBy === 'name' ? 'Name' : projectSortBy === 'count' ? t('count_label') : t('avg_time_label')) + arrow;
             
             renderProjectList();
         }
@@ -1076,7 +1378,7 @@
             const userList = document.getElementById('userActivityList');
             
             if (!allUsers || allUsers.length === 0) {
-                userList.innerHTML = '<li class="no-data">Keine Daten</li>';
+                userList.innerHTML = '<li class="no-data">' + t('no_data') + '</li>';
                 return;
             }
             
@@ -1119,9 +1421,9 @@
                 li.style.padding = '10px';
                 li.style.cursor = 'pointer';
                 li.style.color = '#60a5fa';
-                li.innerHTML = userShowAll ? 
-                    `▲ Weniger anzeigen (${sortedUsers.length - 10} ausgeblendet)` : 
-                    `▼ Alle anzeigen (${sortedUsers.length - 10} weitere)`;
+                li.innerHTML = userShowAll ?
+                    t('show_less').replace('{n}', sortedUsers.length - 10) :
+                    t('show_all').replace('{n}', sortedUsers.length - 10);
                 li.onclick = toggleShowAllUsers;
                 userList.appendChild(li);
             }
@@ -1132,7 +1434,7 @@
             const projectList = document.getElementById('projectStatsList');
             
             if (!allProjects || allProjects.length === 0) {
-                projectList.innerHTML = '<li class="no-data">Keine Daten</li>';
+                projectList.innerHTML = '<li class="no-data">' + t('no_data') + '</li>';
                 return;
             }
             
@@ -1175,9 +1477,9 @@
                 li.style.padding = '10px';
                 li.style.cursor = 'pointer';
                 li.style.color = '#60a5fa';
-                li.innerHTML = projectShowAll ? 
-                    `▲ Weniger anzeigen (${sortedProjects.length - 10} ausgeblendet)` : 
-                    `▼ Alle anzeigen (${sortedProjects.length - 10} weitere)`;
+                li.innerHTML = projectShowAll ?
+                    t('show_less').replace('{n}', sortedProjects.length - 10) :
+                    t('show_all').replace('{n}', sortedProjects.length - 10);
                 li.onclick = toggleShowAllProjects;
                 projectList.appendChild(li);
             }
@@ -1439,7 +1741,7 @@
         const responseComparisonChart = new Chart(document.getElementById('responseComparisonChart'), {
             type: 'bar',
             data: {
-                labels: ['10 Min', '30 Min', '1 Stunde', '24 Stunden'],
+                labels: t('chart_comparison_labels'),
                 datasets: [
                     {
                         label: 'Pool 1',
@@ -1579,7 +1881,7 @@
                 labels: [],
                 datasets: [
                     {
-                        label: 'Durchschnitt',
+                        label: t('chart_avg'),
                         data: [],
                         borderColor: '#3b82f6',
                         backgroundColor: 'rgba(59, 130, 246, 0.1)',
@@ -1588,7 +1890,7 @@
                         yAxisID: 'y'
                     },
                     {
-                        label: 'P95 (95. Perzentil)',
+                        label: t('chart_p95'),
                         data: [],
                         borderColor: '#f59e0b',
                         backgroundColor: 'rgba(245, 158, 11, 0.1)',
@@ -1616,7 +1918,7 @@
                         beginAtZero: true,
                         ticks: { color: '#94a3b8', callback: function(value) { return value + 'ms'; } },
                         grid: { color: '#1e293b' },
-                        title: { display: true, text: 'Response Zeit (ms)', color: '#94a3b8' }
+                        title: { display: true, text: t('chart_response_time_ms'), color: '#94a3b8' }
                     },
                     x: {
                         ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 },
@@ -1631,7 +1933,7 @@
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'Anzahl Requests',
+                    label: t('chart_num_requests'),
                     data: [],
                     backgroundColor: '#3b82f6'
                 }]
@@ -1659,7 +1961,7 @@
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'Ø Response Zeit',
+                    label: t('chart_avg_response'),
                     data: [],
                     borderColor: '#f59e0b',
                     backgroundColor: 'rgba(245, 158, 11, 0.2)',
@@ -1690,7 +1992,7 @@
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'Ø Response Zeit (ms)',
+                    label: t('chart_avg_response_ms'),
                     data: [],
                     backgroundColor: '#ef4444'
                 }]
@@ -1719,7 +2021,7 @@
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'Ø Response Zeit (ms)',
+                    label: t('chart_avg_response_ms'),
                     data: [],
                     backgroundColor: ['#3b82f6', '#8b5cf6', '#ec4899']
                 }]
@@ -1746,7 +2048,7 @@
             type: 'scatter',
             data: {
                 datasets: [{
-                    label: 'Request Volume vs Ø Response Zeit',
+                    label: t('chart_volume_vs_avg'),
                     data: [],
                     backgroundColor: 'rgba(59, 130, 246, 0.6)',
                     pointRadius: 5
@@ -1760,7 +2062,7 @@
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                return 'Volume: ' + context.parsed.x + ' Requests, Ø Zeit: ' + context.parsed.y + 'ms';
+                                return t('chart_tooltip_volume').replace('{x}', context.parsed.x).replace('{y}', context.parsed.y);
                             }
                         }
                     }
@@ -1770,13 +2072,13 @@
                         beginAtZero: true,
                         ticks: { color: '#94a3b8', callback: function(value) { return value + 'ms'; } },
                         grid: { color: '#1e293b' },
-                        title: { display: true, text: 'Ø Response Zeit (ms)', color: '#94a3b8' }
+                        title: { display: true, text: t('chart_avg_response_ms'), color: '#94a3b8' }
                     },
                     x: {
                         beginAtZero: true,
                         ticks: { color: '#94a3b8' },
                         grid: { color: '#1e293b' },
-                        title: { display: true, text: 'Anzahl Requests', color: '#94a3b8' }
+                        title: { display: true, text: t('chart_num_requests'), color: '#94a3b8' }
                     }
                 }
             }
@@ -1787,7 +2089,7 @@
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'Ø Response Zeit (ms)',
+                    label: t('chart_avg_response_ms'),
                     data: [],
                     backgroundColor: '#8b5cf6'
                 }]
@@ -1818,7 +2120,7 @@
             const aggregation = document.getElementById('analytics-aggregation').value;
 
             if (!fromDate || !toDate) {
-                alert('Bitte wähle einen Zeitraum aus!');
+                alert(t('alert_select_period'));
                 return;
             }
 
@@ -1881,7 +2183,7 @@
 
             } catch (error) {
                 console.error('Error loading analytics:', error);
-                alert('Fehler beim Laden der Analytics-Daten!');
+                alert(t('alert_analytics_error'));
             }
         }
 
@@ -1938,7 +2240,7 @@
                 tbody.innerHTML = '';
                 
                 if (requests.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #94a3b8;">Keine Daten verfügbar</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #94a3b8;">' + t('no_data_available') + '</td></tr>';
                 } else {
                     requests.forEach(req => {
                         const row = tbody.insertRow();
@@ -2101,7 +2403,7 @@
             }
             
             if (allIssues.length === 0) {
-                container.innerHTML = '<div class="no-data">Keine kritischen Probleme</div>';
+                container.innerHTML = '<div class="no-data">' + t('no_issues') + '</div>';
                 return;
             }
             
@@ -2140,7 +2442,7 @@
                 tbody.innerHTML = '';
                 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="no-data">Keine Daten für diesen Zeitraum</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="no-data">' + t('no_data_period') + '</td></tr>';
                     return;
                 }
                 
@@ -2152,7 +2454,7 @@
                     else if (req.response_time_ms > 1000) responseClass = 'response-slow';
                     
                     row.innerHTML = `
-                        <td>${new Date(req.timestamp).toLocaleString('de-DE')}</td>
+                        <td>${new Date(req.timestamp).toLocaleString(getLocale())}</td>
                         <td>${req.pool}</td>
                         <td>${req.project}</td>
                         <td>${req.user || 'N/A'}</td>
@@ -2164,7 +2466,7 @@
             } catch (error) {
                 console.error('Error loading request history:', error);
                 document.getElementById('requestsTableBody').innerHTML = 
-                    '<tr><td colspan="7" class="no-data">Fehler beim Laden der Daten</td></tr>';
+                    '<tr><td colspan="7" class="no-data">' + t('error_loading') + '</td></tr>';
             }
         }
         
@@ -2180,8 +2482,8 @@
                 if (data.hourly && data.hourly.length > 0) {
                     requestsPerHourChart.data.labels = data.hourly.map(h => {
                         const date = new Date(h.hour);
-                        return date.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'}) + ' ' +
-                               date.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+                        return date.toLocaleDateString(getLocale(), {day: '2-digit', month: '2-digit'}) + ' ' +
+                               date.toLocaleTimeString(getLocale(), {hour: '2-digit', minute: '2-digit'});
                     });
                     requestsPerHourChart.data.datasets[0].data = data.hourly.map(h => h.count);
                     requestsPerHourChart.update();
@@ -2243,10 +2545,10 @@
                 const labels = data.map(m => {
                     const date = new Date(m.timestamp);
                     if (hours <= 6) {
-                        return date.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+                        return date.toLocaleTimeString(getLocale(), {hour: '2-digit', minute: '2-digit'});
                     } else {
-                        return date.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'}) + ' ' +
-                               date.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+                        return date.toLocaleDateString(getLocale(), {day: '2-digit', month: '2-digit'}) + ' ' +
+                               date.toLocaleTimeString(getLocale(), {hour: '2-digit', minute: '2-digit'});
                     }
                 });
                 
@@ -2307,8 +2609,50 @@
             rows.forEach(row => tbody.appendChild(row));
         }
         
+        // Update chart labels when language changes
+        function updateChartLabels() {
+            // Response comparison chart
+            responseComparisonChart.data.labels = t('chart_comparison_labels');
+            responseComparisonChart.update();
+
+            // Performance trends
+            performanceTrendsChart.data.datasets[0].label = t('chart_avg');
+            performanceTrendsChart.data.datasets[1].label = t('chart_p95');
+            performanceTrendsChart.options.scales.y.title.text = t('chart_response_time_ms');
+            performanceTrendsChart.update();
+
+            // Response distribution
+            responseDistributionChart.data.datasets[0].label = t('chart_num_requests');
+            responseDistributionChart.update();
+
+            // Peak hours
+            peakHoursChart.data.datasets[0].label = t('chart_avg_response');
+            peakHoursChart.update();
+
+            // Slowest projects
+            slowestProjectsChart.data.datasets[0].label = t('chart_avg_response_ms');
+            slowestProjectsChart.update();
+
+            // Pool comparison
+            poolComparisonChart.data.datasets[0].label = t('chart_avg_response_ms');
+            poolComparisonChart.update();
+
+            // Volume vs performance
+            volumePerformanceChart.data.datasets[0].label = t('chart_volume_vs_avg');
+            volumePerformanceChart.options.scales.y.title.text = t('chart_avg_response_ms');
+            volumePerformanceChart.options.scales.x.title.text = t('chart_num_requests');
+            volumePerformanceChart.update();
+
+            // Day of week
+            dayOfWeekChart.data.datasets[0].label = t('chart_avg_response_ms');
+            dayOfWeekChart.update();
+        }
+
         // Load projects list on page load
         loadProjectsList();
+
+        // Apply initial language
+        applyTranslations();
     </script>
 </body>
 </html>
