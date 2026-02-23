@@ -920,9 +920,9 @@
                     <label class="filter-label" data-i18n="action_type">Aktionstyp</label>
                     <select id="usage-type" onchange="loadUsageLog()">
                         <option value="all" data-i18n="all_types">Alle Typen</option>
-                        <option value="GETFEATUREINFO">Sachdatenabfrage (GetFeatureInfo)</option>
-                        <option value="GETPRINT">Drucken (GetPrint)</option>
-                        <option value="WFS-T">Editieren (WFS-T)</option>
+                        <option value="GETFEATUREINFO" data-i18n="filter_getfeatureinfo">Sachdatenabfrage (GetFeatureInfo)</option>
+                        <option value="GETPRINT" data-i18n="filter_getprint">Drucken (GetPrint)</option>
+                        <option value="WFS-T" data-i18n="filter_wfst">Editieren (WFS-T)</option>
                     </select>
                 </div>
                 <div class="filter-group">
@@ -977,17 +977,17 @@
                         <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
                             <input type="checkbox" id="cb-GETFEATUREINFO" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
                                    style="accent-color:#22c55e; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
-                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#22c55e;color:#fff;font-size:0.8em;font-weight:600;">Sachdaten</span>
+                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#22c55e;color:#fff;font-size:0.8em;font-weight:600;" data-i18n="type_getfeatureinfo">Sachdaten</span>
                         </label>
                         <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
                             <input type="checkbox" id="cb-GETPRINT" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
                                    style="accent-color:#f59e0b; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
-                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#f59e0b;color:#fff;font-size:0.8em;font-weight:600;">Drucken</span>
+                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#f59e0b;color:#fff;font-size:0.8em;font-weight:600;" data-i18n="type_getprint">Drucken</span>
                         </label>
                         <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
                             <input type="checkbox" id="cb-WFS-T" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
                                    style="accent-color:#ef4444; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
-                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#ef4444;color:#fff;font-size:0.8em;font-weight:600;">Editieren</span>
+                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#ef4444;color:#fff;font-size:0.8em;font-weight:600;" data-i18n="type_wfst">Editieren</span>
                         </label>
                     </div>
                 </div>
@@ -1147,6 +1147,19 @@
                 show: 'Anzeigen:',
                 all: 'Alle',
                 hide_names: 'Namen verbergen',
+                type_getfeatureinfo: 'Sachdaten',
+                type_getprint: 'Drucken',
+                type_wfst: 'Editieren',
+                type_getmap: 'Karte',
+                type_getfeature: 'Datenexport',
+                action_save: 'Speichern',
+                action_insert: 'Neu',
+                action_update: 'Ändern',
+                action_delete: 'Löschen',
+                action_edit_form: 'Formular',
+                filter_getfeatureinfo: 'Sachdatenabfrage (GetFeatureInfo)',
+                filter_getprint: 'Drucken (GetPrint)',
+                filter_wfst: 'Editieren (WFS-T)',
             },
             en: {
                 // Tabs
@@ -1275,6 +1288,19 @@
                 show: 'Show:',
                 all: 'All',
                 hide_names: 'Hide Names',
+                type_getfeatureinfo: 'Feature Info',
+                type_getprint: 'Print',
+                type_wfst: 'Editing',
+                type_getmap: 'Map',
+                type_getfeature: 'Data Export',
+                action_save: 'Save',
+                action_insert: 'New',
+                action_update: 'Update',
+                action_delete: 'Delete',
+                action_edit_form: 'Form',
+                filter_getfeatureinfo: 'Feature Info (GetFeatureInfo)',
+                filter_getprint: 'Print (GetPrint)',
+                filter_wfst: 'Editing (WFS-T)',
             }
         };
 
@@ -2880,13 +2906,16 @@
             'GETFEATURE':     '#a78bfa',
             'WFS-T':          '#ef4444'
         };
-        const USAGE_TYPE_LABELS = {
-            'GETMAP':         'Karte',
-            'GETFEATUREINFO': 'Sachdaten',
-            'GETPRINT':       'Drucken',
-            'GETFEATURE':     'Datenexport',
-            'WFS-T':          'Editieren'
-        };
+        function getUsageTypeLabel(type) {
+            const map = {
+                'GETMAP':         t('type_getmap'),
+                'GETFEATUREINFO': t('type_getfeatureinfo'),
+                'GETPRINT':       t('type_getprint'),
+                'GETFEATURE':     t('type_getfeature'),
+                'WFS-T':          t('type_wfst'),
+            };
+            return map[type] || type;
+        }
 
         let usageLogData         = [];
         let usageSortCol         = 'timestamp';
@@ -2899,18 +2928,21 @@
             return `&include_admin=${ia}&include_anonymous=${ian}`;
         }
 
-        const ACTION_LABELS = {
-            'SAVE':      'Speichern',
-            'INSERT':    'Neu',
-            'UPDATE':    'Ändern',
-            'DELETE':    'Löschen',
-            'EDIT_FORM': 'Formular'
-        };
+        function getActionLabel(action) {
+            const map = {
+                'SAVE':      t('action_save'),
+                'INSERT':    t('action_insert'),
+                'UPDATE':    t('action_update'),
+                'DELETE':    t('action_delete'),
+                'EDIT_FORM': t('action_edit_form'),
+            };
+            return map[action] || action;
+        }
 
         function usageTypeBadge(type, action) {
             const color    = USAGE_TYPE_COLORS[type] || '#64748b';
-            const label    = USAGE_TYPE_LABELS[type] || type;
-            const actLabel = action ? (ACTION_LABELS[action] || action) : '';
+            const label    = getUsageTypeLabel(type);
+            const actLabel = action ? getActionLabel(action) : '';
             const act      = actLabel ? ` <span style="opacity:0.85;font-size:0.85em;">${actLabel}</span>` : '';
             return `<span style="display:inline-block;padding:2px 9px;border-radius:4px;background:${color};color:#fff;font-size:0.8em;font-weight:600;">${label}${act}</span>`;
         }
@@ -2955,8 +2987,8 @@
                 const total  = Object.values(totals).reduce((a, b) => a + b, 0);
                 const types  = ['GETFEATUREINFO', 'GETPRINT', 'WFS-T'];
                 document.getElementById('usage-kpi-row').innerHTML =
-                    [{ label: 'Gesamt', count: total, color: '#60a5fa' },
-                     ...types.map(tp => ({ label: USAGE_TYPE_LABELS[tp], count: totals[tp] || 0, color: USAGE_TYPE_COLORS[tp] }))
+                    [{ label: t('total'), count: total, color: '#60a5fa' },
+                     ...types.map(tp => ({ label: getUsageTypeLabel(tp), count: totals[tp] || 0, color: USAGE_TYPE_COLORS[tp] }))
                     ].map(k => `
                         <div class="card" style="text-align:center;border-top:3px solid ${k.color};padding:15px;">
                             <div style="font-size:2em;font-weight:700;color:${k.color};">${k.count}</div>
@@ -2976,7 +3008,7 @@
                         </tr></thead>
                         <tbody>${wfst.map(r => `<tr>
                             <td style="padding:5px 10px;border-bottom:1px solid #1e293b;">
-                                <span style="color:${r.action==='INSERT'?'#22c55e':r.action==='DELETE'?'#ef4444':r.action==='EDIT_FORM'?'#94a3b8':'#f59e0b'};font-weight:600;">${ACTION_LABELS[r.action]||r.action||'?'}</span>
+                                <span style="color:${r.action==='INSERT'?'#22c55e':r.action==='DELETE'?'#ef4444':r.action==='EDIT_FORM'?'#94a3b8':'#f59e0b'};font-weight:600;">${getActionLabel(r.action)||'?'}</span>
                             </td>
                             <td style="padding:5px 10px;border-bottom:1px solid #1e293b;"><span class="username">${r.user||'?'}</span></td>
                             <td style="padding:5px 10px;border-bottom:1px solid #1e293b;">${r.layers||'?'}</td>
