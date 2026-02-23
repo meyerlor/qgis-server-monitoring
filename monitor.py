@@ -300,6 +300,10 @@ response_times = {pool: deque(maxlen=RESPONSE_TIMES_MAXLEN) for pool in POOL_NAM
 # Request details tracking - stores info about ongoing requests by request_id
 current_requests = {pool: {} for pool in POOL_NAMES}
 
+# Deduplication for Lizmap EXPRESSION/Evaluate (edit form open) events
+# key: (pool, user, layer) → last log timestamp; prevents logging 3 entries per form open
+_last_expression_log: dict = {}
+
 # Slowest requests in last N minutes
 slowest_requests = {pool: [] for pool in POOL_NAMES}
 
@@ -477,6 +481,11 @@ def parse_qgis_log_line(line, log_name):
                 current_requests[log_name][tracking_key]['template'] = template
                 debug_log(f"DEBUG [{log_name}] [{tracking_key}] Set TEMPLATE: {template}")
 
+        elif 'SERVICE:' in line and 'Qgis: Server: SERVICE:' in line:
+            service_match = re.search(r'SERVICE:([^\s]+)', line)
+            if service_match:
+                current_requests[log_name][tracking_key]['service'] = service_match.group(1).upper()
+
         elif 'REQUEST:' in line:
             request_match = re.search(r'REQUEST:([^\s]+)', line)
             if request_match:
@@ -572,6 +581,24 @@ def parse_qgis_log_line(line, log_name):
                             'WFS-T', 'SAVE',
                             response_time, request_id
                         )
+                    elif request_type.upper() == 'EVALUATE' and details.get('service') == 'EXPRESSION':
+                        # Lizmap edit form opened — deduplicate: skip if same user+layer logged within 30s
+                        dedup_key = (log_name, details.get('user', ''), details.get('layers', ''))
+                        last_ts = _last_expression_log.get(dedup_key, 0)
+                        if now - last_ts > 30:
+                            _last_expression_log[dedup_key] = now
+                            debug_log(f"DEBUG [{log_name}] ✓ SAVING to UsageLog (Lizmap edit form): {details.get('map')} layer={details.get('layers')}")
+                            socketio.start_background_task(
+                                save_usage_log_to_db,
+                                log_name,
+                                details.get('map', 'Unknown'),
+                                details.get('user', 'Unknown'),
+                                details.get('layers', 'Unknown'),
+                                'WFS-T', 'EDIT_FORM',
+                                response_time, request_id
+                            )
+                        else:
+                            debug_log(f"DEBUG [{log_name}] ✗ DEDUP skip (Lizmap edit form within 30s): {dedup_key}")
                     else:
                         debug_log(f"DEBUG [{log_name}] ✗ SKIPPING (not tracked): {request_type.upper()}")
                     
