@@ -491,6 +491,18 @@
         .lang-btn:hover:not(.active) {
             color: #e2e8f0;
         }
+
+        .lang-separator {
+            width: 1px;
+            background: #334155;
+            align-self: stretch;
+            margin: 4px 4px;
+        }
+
+        .hide-usernames .username {
+            filter: blur(6px);
+            user-select: none;
+        }
     </style>
 </head>
 <body>
@@ -500,6 +512,8 @@
             <div class="lang-toggle">
                 <button class="lang-btn" onclick="setLanguage('de')">DE</button>
                 <button class="lang-btn" onclick="setLanguage('en')">EN</button>
+                <div class="lang-separator"></div>
+                <button class="lang-btn" id="hide-names-btn" onclick="toggleHideUsernames()" data-i18n="hide_names">Namen verbergen</button>
             </div>
         </div>
         
@@ -1131,6 +1145,7 @@
                 usage_detail_log: '📋 Detailprotokoll',
                 show: 'Anzeigen:',
                 all: 'Alle',
+                hide_names: 'Namen verbergen',
             },
             en: {
                 // Tabs
@@ -1258,6 +1273,7 @@
                 usage_detail_log: '📋 Detail Log',
                 show: 'Show:',
                 all: 'All',
+                hide_names: 'Hide Names',
             }
         };
 
@@ -1288,8 +1304,9 @@
                 }
             });
             document.documentElement.lang = currentLang;
-            // Update language toggle buttons
+            // Update language toggle buttons (skip hide-names-btn, managed separately)
             document.querySelectorAll('.lang-btn').forEach(btn => {
+                if (btn.id === 'hide-names-btn') return;
                 btn.classList.toggle('active', btn.textContent.trim().toLowerCase() === currentLang);
             });
         }
@@ -1299,6 +1316,20 @@
             localStorage.setItem('dashboard_lang', lang);
             applyTranslations();
             updateChartLabels();
+        }
+
+        let hideUsernames = localStorage.getItem('dashboard_hide_names') === 'true';
+
+        function applyHideUsernames() {
+            document.body.classList.toggle('hide-usernames', hideUsernames);
+            const btn = document.getElementById('hide-names-btn');
+            if (btn) btn.classList.toggle('active', hideUsernames);
+        }
+
+        function toggleHideUsernames() {
+            hideUsernames = !hideUsernames;
+            localStorage.setItem('dashboard_hide_names', hideUsernames);
+            applyHideUsernames();
         }
 
         // =====================================================================
@@ -1461,7 +1492,7 @@
             displayUsers.forEach(user => {
                 const li = document.createElement('li');
                 li.innerHTML = `
-                    <span>${user.user}</span>
+                    <span class="username">${user.user}</span>
                     <span>${user.count} Requests (Ø ${user.avg_time}ms)</span>
                 `;
                 userList.appendChild(li);
@@ -2322,7 +2353,7 @@
                             <td>${new Date(r.timestamp).toLocaleTimeString('de-DE')}</td>
                             <td class="${cls}">${r.response_time_ms}</td>
                             <td>${r.project}</td>
-                            <td>${r.user || 'Unknown'}</td>
+                            <td><span class="username">${r.user || 'Unknown'}</span></td>
                             <td title="${r.layers}">${r.layers}</td>
                         </tr>`;
                     }).join('');
@@ -2548,7 +2579,7 @@
                         <td>${new Date(req.timestamp).toLocaleString(getLocale())}</td>
                         <td>${req.pool}</td>
                         <td>${req.project}</td>
-                        <td>${req.user || 'N/A'}</td>
+                        <td><span class="username">${req.user || 'N/A'}</span></td>
                         <td>${req.request_type || 'N/A'}</td>
                         <td class="${responseClass}">${req.response_time_ms}</td>
                         <td title="${req.layers || 'N/A'}">${req.layers || 'N/A'}</td>
@@ -2937,7 +2968,7 @@
                             <td style="padding:5px 10px;border-bottom:1px solid #1e293b;">
                                 <span style="color:${r.action==='INSERT'?'#22c55e':r.action==='DELETE'?'#ef4444':'#f59e0b'};font-weight:600;">${r.action||'?'}</span>
                             </td>
-                            <td style="padding:5px 10px;border-bottom:1px solid #1e293b;">${r.user||'?'}</td>
+                            <td style="padding:5px 10px;border-bottom:1px solid #1e293b;"><span class="username">${r.user||'?'}</span></td>
                             <td style="padding:5px 10px;border-bottom:1px solid #1e293b;">${r.layers||'?'}</td>
                             <td style="padding:5px 10px;border-bottom:1px solid #1e293b;text-align:right;font-weight:600;">${r.count}</td>
                         </tr>`).join('')}</tbody></table>`;
@@ -3013,7 +3044,7 @@
                     <td style="white-space:nowrap;">${ts}</td>
                     <td>${badge}</td>
                     <td>${r.action || '–'}</td>
-                    <td>${r.user || '–'}</td>
+                    <td><span class="username">${r.user || '–'}</span></td>
                     <td title="${r.project}">${r.project || '–'}</td>
                     <td style="font-size:0.85em;color:#94a3b8;" title="${layers}">${layersShort}</td>
                     <td class="${msClass}">${ms}</td>
@@ -3037,8 +3068,9 @@
         // Load projects list on page load
         loadProjectsList();
 
-        // Apply initial language
+        // Apply initial language and username visibility
         applyTranslations();
+        applyHideUsernames();
     </script>
 </body>
 </html>

@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 import threading
 import re
 import os
+from urllib.parse import unquote
 from collections import deque
 from pathlib import Path
 import subprocess
@@ -454,7 +455,21 @@ def parse_qgis_log_line(line, log_name):
                 layers = layers_match.group(1).strip()
                 current_requests[log_name][tracking_key]['layers'] = layers
                 debug_log(f"DEBUG [{log_name}] [{tracking_key}] Set LAYERS: {layers[:50]}...")
-        
+
+        elif 'TYPENAME:' in line:
+            typename_match = re.search(r'TYPENAME:([^\s]+)', line)
+            if typename_match:
+                typename = typename_match.group(1).strip()
+                current_requests[log_name][tracking_key]['layers'] = typename
+                debug_log(f"DEBUG [{log_name}] [{tracking_key}] Set TYPENAME: {typename}")
+
+        elif 'TEMPLATE=' in line:
+            template_match = re.search(r'TEMPLATE=([^&\s]+)', line, re.IGNORECASE)
+            if template_match:
+                template = unquote(template_match.group(1))
+                current_requests[log_name][tracking_key]['template'] = template
+                debug_log(f"DEBUG [{log_name}] [{tracking_key}] Set TEMPLATE: {template}")
+
         elif 'REQUEST:' in line:
             request_match = re.search(r'REQUEST:([^\s]+)', line)
             if request_match:
@@ -514,7 +529,19 @@ def parse_qgis_log_line(line, log_name):
                             'GETMAP', None,
                             response_time, request_id
                         )
-                    elif request_type.upper() in ('GETFEATUREINFO', 'GETPRINT', 'GETFEATURE'):
+                    elif request_type.upper() in ('GETPRINT', 'GETPRINTATLAS'):
+                        template = details.get('template') or details.get('layers', 'Unknown')
+                        debug_log(f"DEBUG [{log_name}] ✓ SAVING to UsageLog ({request_type.upper()}): {details.get('map')} template={template}")
+                        socketio.start_background_task(
+                            save_usage_log_to_db,
+                            log_name,
+                            details.get('map', 'Unknown'),
+                            details.get('user', 'Unknown'),
+                            template,
+                            'GETPRINT', None,
+                            response_time, request_id
+                        )
+                    elif request_type.upper() in ('GETFEATUREINFO', 'GETFEATURE'):
                         # Only in usage_log (not tracked for perf stats)
                         debug_log(f"DEBUG [{log_name}] ✓ SAVING to UsageLog ({request_type.upper()}): {details.get('map')}")
                         socketio.start_background_task(
@@ -524,6 +551,17 @@ def parse_qgis_log_line(line, log_name):
                             details.get('user', 'Unknown'),
                             details.get('layers', 'Unknown'),
                             request_type.upper(), None,
+                            response_time, request_id
+                        )
+                    elif request_type.upper() == 'TRANSACTION':
+                        debug_log(f"DEBUG [{log_name}] ✓ SAVING to UsageLog (WFS-T Transaction): {details.get('map')}")
+                        socketio.start_background_task(
+                            save_usage_log_to_db,
+                            log_name,
+                            details.get('map', 'Unknown'),
+                            details.get('user', 'Unknown'),
+                            details.get('layers', 'Unknown'),
+                            'WFS-T', 'SAVE',
                             response_time, request_id
                         )
                     else:
