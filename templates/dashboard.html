@@ -942,31 +942,11 @@
             <!-- KPI cards -->
             <div id="usage-kpi-row" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:15px; margin-bottom:20px;"></div>
 
-            <!-- Charts -->
-            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:20px; margin-bottom:20px;">
-                <div class="card">
-                    <h2 data-i18n="usage_hourly_title">📊 Aktivität nach Typ (stündlich)</h2>
-                    <div class="chart-container" style="height:280px;">
-                        <canvas id="usageHourlyChart"></canvas>
-                    </div>
-                </div>
-                <div class="card">
-                    <h2 data-i18n="usage_top_users">👤 Top-Benutzer (gesamt)</h2>
-                    <div class="chart-container" style="height:280px;">
-                        <canvas id="usageUserChart"></canvas>
-                    </div>
-                </div>
-                <div class="card">
-                    <h2 data-i18n="usage_featureinfo_projects">🔍 Sachdatenabfragen je Projekt</h2>
-                    <div class="chart-container" style="height:280px;">
-                        <canvas id="usageFeatureInfoChart"></canvas>
-                    </div>
-                </div>
-                <div class="card">
-                    <h2 data-i18n="usage_wfst_title">✏️ Editier-Aktionen (WFS-T)</h2>
-                    <div id="usageWfstTable" style="overflow-y:auto; max-height:280px;">
-                        <div class="no-data" data-i18n="no_wfst_data">Keine WFS-T Daten im Zeitraum</div>
-                    </div>
+            <!-- WFS-T summary -->
+            <div class="card" style="margin-bottom:20px;">
+                <h2 data-i18n="usage_wfst_title">✏️ Editier-Aktionen (WFS-T)</h2>
+                <div id="usageWfstTable" style="overflow-y:auto; max-height:280px;">
+                    <div class="no-data" data-i18n="no_wfst_data">Keine WFS-T Daten im Zeitraum</div>
                 </div>
             </div>
 
@@ -2888,9 +2868,6 @@
             'WFS-T':          'Editieren'
         };
 
-        let usageHourlyChart     = null;
-        let usageUserChart       = null;
-        let usageFeatureInfoChart = null;
         let usageLogData         = [];
         let usageSortCol         = 'timestamp';
         let usageSortOrder       = 'desc';
@@ -2909,51 +2886,7 @@
             return `<span style="display:inline-block;padding:2px 9px;border-radius:4px;background:${color};color:#fff;font-size:0.8em;font-weight:600;">${label}${act}</span>`;
         }
 
-        function initUsageCharts() {
-            const baseScales = {
-                y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
-                x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: '#1e293b' } }
-            };
-            if (usageHourlyChart) usageHourlyChart.destroy();
-            usageHourlyChart = new Chart(document.getElementById('usageHourlyChart'), {
-                type: 'bar',
-                data: { labels: [], datasets: [] },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: true, labels: { color: '#94a3b8', boxWidth: 12 } } },
-                    scales: { y: { ...baseScales.y, stacked: true }, x: { ...baseScales.x, stacked: true } }
-                }
-            });
-            if (usageUserChart) usageUserChart.destroy();
-            usageUserChart = new Chart(document.getElementById('usageUserChart'), {
-                type: 'bar',
-                data: { labels: [], datasets: [{ label: 'Aktionen', data: [], backgroundColor: '#3b82f6' }] },
-                options: {
-                    responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
-                        y: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } }
-                    }
-                }
-            });
-            if (usageFeatureInfoChart) usageFeatureInfoChart.destroy();
-            usageFeatureInfoChart = new Chart(document.getElementById('usageFeatureInfoChart'), {
-                type: 'bar',
-                data: { labels: [], datasets: [{ label: 'GetFeatureInfo', data: [], backgroundColor: '#22c55e' }] },
-                options: {
-                    responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
-                        y: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } }
-                    }
-                }
-            });
-        }
-
         async function initUsageTab() {
-            initUsageCharts();
             if (!usageTabInitialized) {
                 try {
                     const uf = usageUserParams();
@@ -3001,34 +2934,6 @@
                             <div style="color:#94a3b8;font-size:0.85em;margin-top:4px;">${k.label}</div>
                         </div>`).join('');
 
-                // Hourly stacked chart
-                const hourlyRaw = data.hourly || [];
-                const hours     = [...new Set(hourlyRaw.map(h => h.hour))].sort();
-                const usedTypes = [...new Set(hourlyRaw.map(h => h.type))];
-                usageHourlyChart.data.labels = hours.map(h => {
-                    const d = new Date(h);
-                    return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' +
-                           d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-                });
-                usageHourlyChart.data.datasets = usedTypes.map(tp => ({
-                    label: USAGE_TYPE_LABELS[tp] || tp,
-                    data:  hours.map(h => { const f = hourlyRaw.find(r => r.hour === h && r.type === tp); return f ? f.count : 0; }),
-                    backgroundColor: USAGE_TYPE_COLORS[tp] || '#64748b'
-                }));
-                usageHourlyChart.update();
-
-                // Top users
-                const users = (data.by_user || []).slice(0, 12);
-                usageUserChart.data.labels           = users.map(u => u.user);
-                usageUserChart.data.datasets[0].data = users.map(u => u.count);
-                usageUserChart.update();
-
-                // FeatureInfo projects
-                const fiProjects = data.featureinfo_projects || [];
-                usageFeatureInfoChart.data.labels           = fiProjects.map(p => p.project);
-                usageFeatureInfoChart.data.datasets[0].data = fiProjects.map(p => p.count);
-                usageFeatureInfoChart.update();
-
                 // WFS-T table
                 const wfst = data.wfst_summary || [];
                 document.getElementById('usageWfstTable').innerHTML = wfst.length === 0
@@ -3058,12 +2963,16 @@
             const user    = document.getElementById('usage-user').value;
             const project = document.getElementById('usage-project').value;
             const uf      = usageUserParams();
+            const tbody   = document.getElementById('usageLogBody');
             try {
                 usageLogData = await fetch(
                     `/api/usage/log?days=${days}&request_type=${type}&user=${user}&project=${project}${uf}`
-                ).then(r => r.json());
+                ).then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`));
                 renderUsageLogTable();
-            } catch(e) { console.error('loadUsageLog error:', e); }
+            } catch(e) {
+                console.error('loadUsageLog error:', e);
+                tbody.innerHTML = `<tr><td colspan="7" class="no-data">${t('error_loading')}: ${e}</td></tr>`;
+            }
         }
 
         function toggleAlleCheckbox() {
