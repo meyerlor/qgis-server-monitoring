@@ -1000,12 +1000,13 @@
                                 <th onclick="sortUsageTable('action')" data-i18n="action">Aktion <span class="sort-icon">↕</span></th>
                                 <th onclick="sortUsageTable('user')">User <span class="sort-icon">↕</span></th>
                                 <th onclick="sortUsageTable('project')" data-i18n="project">Projekt <span class="sort-icon">↕</span></th>
+                                <th>Layout</th>
                                 <th>Layer</th>
                                 <th onclick="sortUsageTable('response_time_ms')">ms <span class="sort-icon">↕</span></th>
                             </tr>
                         </thead>
                         <tbody id="usageLogBody">
-                            <tr><td colspan="7" class="loading" data-i18n="loading">Lade Daten...</td></tr>
+                            <tr><td colspan="8" class="loading" data-i18n="loading">Lade Daten...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -2990,7 +2991,7 @@
                 renderUsageLogTable();
             } catch(e) {
                 console.error('loadUsageLog error:', e);
-                tbody.innerHTML = `<tr><td colspan="7" class="no-data">${t('error_loading')}: ${e}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="no-data">${t('error_loading')}: ${e}</td></tr>`;
             }
         }
 
@@ -3029,7 +3030,7 @@
 
             countEl.textContent = `(${sorted.length} Einträge)`;
             if (!sorted.length) {
-                tbody.innerHTML = '<tr><td colspan="7" class="no-data">Keine Daten für diesen Zeitraum/Filter</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="no-data">Keine Daten für diesen Zeitraum/Filter</td></tr>';
                 return;
             }
 
@@ -3038,14 +3039,17 @@
                 const badge   = usageTypeBadge(r.request_type, r.action);
                 const ms      = r.response_time_ms != null ? r.response_time_ms + 'ms' : '–';
                 const msClass = r.response_time_ms > 2000 ? 'response-critical' : r.response_time_ms > 1000 ? 'response-slow' : '';
-                const layers  = (r.layers || '–');
-                const layersShort = layers.length > 55 ? layers.substring(0, 55) + '…' : layers;
+                const isPrint = r.request_type === 'GETPRINT';
+                const layout  = isPrint ? (r.layers || '–') : '–';
+                const layers  = isPrint ? '–' : (r.layers || '–');
+                const layersShort = layers.length > 40 ? layers.substring(0, 40) + '…' : layers;
                 return `<tr>
                     <td style="white-space:nowrap;">${ts}</td>
                     <td>${badge}</td>
                     <td>${r.action || '–'}</td>
                     <td><span class="username">${r.user || '–'}</span></td>
                     <td title="${r.project}">${r.project || '–'}</td>
+                    <td style="font-size:0.85em;color:#94a3b8;">${layout}</td>
                     <td style="font-size:0.85em;color:#94a3b8;" title="${layers}">${layersShort}</td>
                     <td class="${msClass}">${ms}</td>
                 </tr>`;
