@@ -456,8 +456,8 @@ def parse_qgis_log_line(line, log_name):
                 current_requests[log_name][tracking_key]['user'] = user_match.group(1)
                 debug_log(f"DEBUG [{log_name}] [{tracking_key}] Set USER: {user_match.group(1)}")
         
-        elif 'LAYERS:' in line:
-            layers_match = re.search(r'LAYERS:(.+?)(?:\s|$)', line)
+        elif 'LAYERS:' in line or ('LAYER:' in line and 'LIZMAP' not in line and 'EXP_FILTER' not in line):
+            layers_match = re.search(r'LAYERS?:(.+?)(?:\s|$)', line)
             if layers_match:
                 layers = layers_match.group(1).strip()
                 current_requests[log_name][tracking_key]['layers'] = layers
@@ -1798,6 +1798,7 @@ def get_usage_log():
             'project':         row['project'] or '',
             'user':            row['user'] or '',
             'layers':          row['layers'] or '',
+            'template':        row['template'] or '',
             'request_type':    row['request_type'],
             'action':          row['action'] or '',
             'response_time_ms': row['response_time_ms'],
