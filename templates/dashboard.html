@@ -906,7 +906,6 @@
                     <label class="filter-label" data-i18n="action_type">Aktionstyp</label>
                     <select id="usage-type" onchange="loadUsageLog()">
                         <option value="all" data-i18n="all_types">Alle Typen</option>
-                        <option value="GETMAP">Kartenaufruf (GETMAP)</option>
                         <option value="GETFEATUREINFO">Sachdatenabfrage (GetFeatureInfo)</option>
                         <option value="GETPRINT">Drucken (GetPrint)</option>
                         <option value="GETFEATURE">Datenexport WFS (GetFeature)</option>
@@ -962,11 +961,6 @@
                             <span style="color:#94a3b8; font-size:0.8em; font-weight:600;" data-i18n="all">Alle</span>
                         </label>
                         <span style="color:#334155;">|</span>
-                        <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
-                            <input type="checkbox" id="cb-GETMAP" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
-                                   style="accent-color:#3b82f6; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
-                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#3b82f6;color:#fff;font-size:0.8em;font-weight:600;">Karte</span>
-                        </label>
                         <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
                             <input type="checkbox" id="cb-GETFEATUREINFO" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
                                    style="accent-color:#22c55e; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
@@ -2924,7 +2918,7 @@
                 const totals = {};
                 (data.by_type || []).forEach(t => { totals[t.type] = t.count; });
                 const total  = Object.values(totals).reduce((a, b) => a + b, 0);
-                const types  = ['GETMAP', 'GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T'];
+                const types  = ['GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T'];
                 document.getElementById('usage-kpi-row').innerHTML =
                     [{ label: 'Gesamt', count: total, color: '#60a5fa' },
                      ...types.map(tp => ({ label: USAGE_TYPE_LABELS[tp], count: totals[tp] || 0, color: USAGE_TYPE_COLORS[tp] }))
@@ -2977,7 +2971,7 @@
 
         function toggleAlleCheckbox() {
             const checked = document.getElementById('cb-alle').checked;
-            ['GETMAP', 'GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T'].forEach(tp => {
+            ['GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T'].forEach(tp => {
                 const cb = document.getElementById('cb-' + tp);
                 if (cb) cb.checked = checked;
             });
@@ -2985,7 +2979,7 @@
         }
 
         function syncAlleCheckbox() {
-            const types = ['GETMAP', 'GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T'];
+            const types = ['GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T'];
             const allChecked  = types.every(tp => document.getElementById('cb-' + tp)?.checked);
             const noneChecked = types.every(tp => !document.getElementById('cb-' + tp)?.checked);
             const cbAlle = document.getElementById('cb-alle');
@@ -2996,7 +2990,7 @@
         function renderUsageLogTable() {
             const tbody   = document.getElementById('usageLogBody');
             const countEl = document.getElementById('usage-log-count');
-            const activeTypes = ['GETMAP', 'GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T']
+            const activeTypes = ['GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T']
                 .filter(tp => { const cb = document.getElementById('cb-' + tp); return cb ? cb.checked : true; });
 
             const sorted = [...usageLogData]
