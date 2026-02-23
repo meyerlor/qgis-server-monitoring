@@ -900,6 +900,13 @@
                     <canvas id="memHistoryChart"></canvas>
                 </div>
             </div>
+
+            <div class="card">
+                <h2 data-i18n="swap_history">🔄 Swap Nutzung (Historisch)</h2>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="swapHistoryChart"></canvas>
+                </div>
+            </div>
         </div>
 
         <!-- Tab 5: Nutzungsprotokoll -->
@@ -1106,6 +1113,7 @@
                 last_24_hours: 'Letzte 24 Stunden',
                 cpu_history: '⚡ CPU Auslastung (Historisch)',
                 ram_history: '💾 RAM Nutzung (Historisch)',
+                swap_history: '🔄 Swap Nutzung (Historisch)',
                 // Chart labels
                 chart_avg: 'Durchschnitt',
                 chart_p95: 'P95 (95. Perzentil)',
@@ -1247,6 +1255,7 @@
                 last_24_hours: 'Last 24 Hours',
                 cpu_history: '⚡ CPU Usage (Historical)',
                 ram_history: '💾 RAM Usage (Historical)',
+                swap_history: '🔄 Swap Usage (Historical)',
                 // Chart labels
                 chart_avg: 'Average',
                 chart_p95: 'P95 (95th Percentile)',
@@ -1979,7 +1988,23 @@
             },
             options: chartConfig
         });
-        
+
+        const swapHistoryChart = new Chart(document.getElementById('swapHistoryChart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Swap Used (GB)',
+                    data: [],
+                    borderColor: '#f97316',
+                    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: chartConfig
+        });
+
         // Analytics Charts Initialization
         const performanceTrendsChart = new Chart(document.getElementById('performanceTrendsChart'), {
             type: 'line',
@@ -2710,7 +2735,12 @@
                 memHistoryChart.data.labels = labels;
                 memHistoryChart.data.datasets[0].data = data.map(m => m.memory_used_gb);
                 memHistoryChart.update();
-                
+
+                // Update Swap History
+                swapHistoryChart.data.labels = labels;
+                swapHistoryChart.data.datasets[0].data = data.map(m => m.swap_used_gb);
+                swapHistoryChart.update();
+
             } catch (error) {
                 console.error('Error loading system history:', error);
             }

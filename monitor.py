@@ -176,10 +176,19 @@ def init_database():
             disk_read_mb REAL,
             disk_write_mb REAL,
             network_sent_mb REAL,
-            network_recv_mb REAL
+            network_recv_mb REAL,
+            swap_used_gb REAL,
+            swap_percent REAL
         )
     ''')
-    
+    # Migration: add swap columns if they don't exist yet
+    for col, typ in [('swap_used_gb', 'REAL'), ('swap_percent', 'REAL')]:
+        try:
+            cursor.execute(f'ALTER TABLE system_metrics ADD COLUMN {col} {typ}')
+            conn.commit()
+        except Exception:
+            pass  # column already exists
+
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_sys_timestamp ON system_metrics(timestamp)')
 
     # Usage log table - tracks all request types (GETMAP, GETFEATUREINFO, GETPRINT, GETFEATURE, WFS-T)
@@ -249,16 +258,16 @@ def save_usage_log_to_db(pool, project, user, layers, request_type, action, resp
     except Exception as e:
         debug_log(f"DEBUG [DB] ✗ ERROR saving usage log: {e}")
 
-def save_system_metrics_to_db(cpu, mem_percent, mem_used_gb, mem_avail_gb, mem_total_gb, disk_read, disk_write, net_sent, net_recv):
+def save_system_metrics_to_db(cpu, mem_percent, mem_used_gb, mem_avail_gb, mem_total_gb, disk_read, disk_write, net_sent, net_recv, swap_used_gb=0, swap_percent=0):
     """Save system metrics to the database"""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO system_metrics (timestamp, cpu_percent, memory_percent, memory_used_gb, 
-                                       memory_available_gb, memory_total_gb)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (datetime.now(), cpu, mem_percent, mem_used_gb, mem_avail_gb, mem_total_gb))
+            INSERT INTO system_metrics (timestamp, cpu_percent, memory_percent, memory_used_gb,
+                                       memory_available_gb, memory_total_gb, swap_used_gb, swap_percent)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (datetime.now(), cpu, mem_percent, mem_used_gb, mem_avail_gb, mem_total_gb, swap_used_gb, swap_percent))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -324,7 +333,8 @@ def get_system_metrics():
     
     # Memory Usage
     memory = psutil.virtual_memory()
-    
+    swap = psutil.swap_memory()
+
     # Disk I/O
     disk_io = psutil.disk_io_counters()
     
@@ -343,6 +353,11 @@ def get_system_metrics():
             'used_gb': round(memory.used / (1024**3), 2),
             'available_gb': round(memory.available / (1024**3), 2),
             'percent': memory.percent
+        },
+        'swap': {
+            'total_gb': round(swap.total / (1024**3), 2),
+            'used_gb': round(swap.used / (1024**3), 2),
+            'percent': swap.percent
         },
         'disk': {
             'read_mb': round(disk_io.read_bytes / (1024**2), 2),
@@ -1056,7 +1071,9 @@ def monitoring_thread():
                 metrics['disk']['read_mb'],
                 metrics['disk']['write_mb'],
                 metrics['network']['sent_mb'],
-                metrics['network']['recv_mb']
+                metrics['network']['recv_mb'],
+                metrics['swap']['used_gb'],
+                metrics['swap']['percent']
             )
             
             # Emit to all connected clients
@@ -1542,7 +1559,9 @@ def get_system_history():
                     AVG(memory_percent) as memory_percent,
                     AVG(memory_used_gb) as memory_used_gb,
                     AVG(memory_available_gb) as memory_available_gb,
-                    MAX(memory_total_gb) as memory_total_gb
+                    MAX(memory_total_gb) as memory_total_gb,
+                    AVG(swap_used_gb) as swap_used_gb,
+                    AVG(swap_percent) as swap_percent
                 FROM system_metrics
                 WHERE timestamp >= datetime('now', '-' || ? || ' hours')
                 GROUP BY strftime('%Y-%m-%d %H:00:00', timestamp)
@@ -1551,13 +1570,15 @@ def get_system_history():
         else:
             # Return all data points for short timeframes
             cursor.execute('''
-                SELECT 
+                SELECT
                     timestamp,
                     cpu_percent,
                     memory_percent,
                     memory_used_gb,
                     memory_available_gb,
-                    memory_total_gb
+                    memory_total_gb,
+                    swap_used_gb,
+                    swap_percent
                 FROM system_metrics
                 WHERE timestamp >= datetime('now', '-' || ? || ' hours')
                 ORDER BY timestamp ASC
@@ -1573,7 +1594,9 @@ def get_system_history():
                 'memory_percent': round(row['memory_percent'], 1),
                 'memory_used_gb': round(row['memory_used_gb'], 2),
                 'memory_available_gb': round(row['memory_available_gb'], 2),
-                'memory_total_gb': round(row['memory_total_gb'], 2)
+                'memory_total_gb': round(row['memory_total_gb'], 2),
+                'swap_used_gb': round(row['swap_used_gb'] or 0, 2),
+                'swap_percent': round(row['swap_percent'] or 0, 1)
             })
         
         conn.close()
