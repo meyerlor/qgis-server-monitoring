@@ -1787,24 +1787,6 @@ def get_usage_summary():
         ''')
         by_type = [{'type': r[0], 'count': r[1]} for r in cursor.fetchall()]
 
-        # Top users overall
-        cursor.execute(f'''
-            SELECT user, COUNT(*) as count
-            FROM usage_log {where}
-            AND user IS NOT NULL AND user NOT IN ('', 'Unknown')
-            GROUP BY user ORDER BY count DESC LIMIT 20
-        ''')
-        by_user = [{'user': r[0], 'count': r[1]} for r in cursor.fetchall()]
-
-        # Top projects by GetFeatureInfo
-        cursor.execute(f'''
-            SELECT project, COUNT(*) as count
-            FROM usage_log {where}
-            AND request_type = 'GETFEATUREINFO' AND project IS NOT NULL AND project != ''
-            GROUP BY project ORDER BY count DESC LIMIT 10
-        ''')
-        featureinfo_projects = [{'project': r[0], 'count': r[1]} for r in cursor.fetchall()]
-
         # WFS-T edit action summary
         cursor.execute(f'''
             SELECT action, user, layers, COUNT(*) as count
@@ -1815,22 +1797,10 @@ def get_usage_summary():
         wfst_summary = [{'action': r[0], 'user': r[1], 'layers': r[2], 'count': r[3]}
                         for r in cursor.fetchall()]
 
-        # Hourly activity (stacked by type)
-        cursor.execute(f'''
-            SELECT strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
-                   request_type, COUNT(*) as count
-            FROM usage_log {where}
-            GROUP BY hour, request_type ORDER BY hour
-        ''')
-        hourly = [{'hour': r[0], 'type': r[1], 'count': r[2]} for r in cursor.fetchall()]
-
         conn.close()
         return jsonify({
-            'by_type':              by_type,
-            'by_user':              by_user,
-            'featureinfo_projects': featureinfo_projects,
-            'wfst_summary':         wfst_summary,
-            'hourly':               hourly,
+            'by_type':      by_type,
+            'wfst_summary': wfst_summary,
         })
     except Exception as e:
         print(f"Error fetching usage summary: {e}")
