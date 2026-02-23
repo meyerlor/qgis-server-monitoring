@@ -354,7 +354,7 @@ def parse_qgis_log_line(line, log_name):
     request_id = request_id_match.group(1) if request_id_match else None
     
     # DEBUG: Show every line that has a request ID
-    if request_id and ('MAP:' in line or 'REQUEST:' in line or 'Request finished' in line.lower()):
+    if request_id and ('MAP:' in line or 'REQUEST:' in line or 'TEMPLATE:' in line or 'Request finished' in line.lower()):
         debug_log(f"DEBUG [{log_name}] Processing line with ID [{request_id}]: {line[:150]}")
 
     # WFS-T Transact detection – detect INSERT/UPDATE/DELETE in WFS lines
@@ -463,8 +463,8 @@ def parse_qgis_log_line(line, log_name):
                 current_requests[log_name][tracking_key]['layers'] = typename
                 debug_log(f"DEBUG [{log_name}] [{tracking_key}] Set TYPENAME: {typename}")
 
-        elif 'TEMPLATE=' in line:
-            template_match = re.search(r'TEMPLATE=([^&\s]+)', line, re.IGNORECASE)
+        elif 'TEMPLATE:' in line:
+            template_match = re.search(r'TEMPLATE:([^\s]+)', line, re.IGNORECASE)
             if template_match:
                 template = unquote(template_match.group(1))
                 current_requests[log_name][tracking_key]['template'] = template
