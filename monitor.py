@@ -1723,7 +1723,7 @@ def get_usage_log():
             SELECT id, timestamp, pool, project, user, layers, request_type, action, response_time_ms, request_id
             FROM usage_log
             WHERE timestamp >= ?
-            AND request_type != 'GETMAP'
+            AND request_type NOT IN ('GETMAP', 'GETFEATURE')
             {user_filter}
         '''
 
@@ -1784,7 +1784,7 @@ def get_usage_summary():
         cursor.execute(f'''
             SELECT request_type, COUNT(*) as count
             FROM usage_log {where}
-            AND request_type != 'GETMAP'
+            AND request_type NOT IN ('GETMAP', 'GETFEATURE')
             GROUP BY request_type ORDER BY count DESC
         ''')
         by_type = [{'type': r[0], 'count': r[1]} for r in cursor.fetchall()]

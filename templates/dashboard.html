@@ -908,7 +908,6 @@
                         <option value="all" data-i18n="all_types">Alle Typen</option>
                         <option value="GETFEATUREINFO">Sachdatenabfrage (GetFeatureInfo)</option>
                         <option value="GETPRINT">Drucken (GetPrint)</option>
-                        <option value="GETFEATURE">Datenexport WFS (GetFeature)</option>
                         <option value="WFS-T">Editieren (WFS-T)</option>
                     </select>
                 </div>
@@ -970,11 +969,6 @@
                             <input type="checkbox" id="cb-GETPRINT" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
                                    style="accent-color:#f59e0b; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
                             <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#f59e0b;color:#fff;font-size:0.8em;font-weight:600;">Drucken</span>
-                        </label>
-                        <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
-                            <input type="checkbox" id="cb-GETFEATURE" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
-                                   style="accent-color:#a78bfa; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
-                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#a78bfa;color:#fff;font-size:0.8em;font-weight:600;">Datenexport</span>
                         </label>
                         <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
                             <input type="checkbox" id="cb-WFS-T" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
@@ -2918,7 +2912,7 @@
                 const totals = {};
                 (data.by_type || []).forEach(t => { totals[t.type] = t.count; });
                 const total  = Object.values(totals).reduce((a, b) => a + b, 0);
-                const types  = ['GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T'];
+                const types  = ['GETFEATUREINFO', 'GETPRINT', 'WFS-T'];
                 document.getElementById('usage-kpi-row').innerHTML =
                     [{ label: 'Gesamt', count: total, color: '#60a5fa' },
                      ...types.map(tp => ({ label: USAGE_TYPE_LABELS[tp], count: totals[tp] || 0, color: USAGE_TYPE_COLORS[tp] }))
@@ -2971,7 +2965,7 @@
 
         function toggleAlleCheckbox() {
             const checked = document.getElementById('cb-alle').checked;
-            ['GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T'].forEach(tp => {
+            ['GETFEATUREINFO', 'GETPRINT', 'WFS-T'].forEach(tp => {
                 const cb = document.getElementById('cb-' + tp);
                 if (cb) cb.checked = checked;
             });
@@ -2979,7 +2973,7 @@
         }
 
         function syncAlleCheckbox() {
-            const types = ['GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T'];
+            const types = ['GETFEATUREINFO', 'GETPRINT', 'WFS-T'];
             const allChecked  = types.every(tp => document.getElementById('cb-' + tp)?.checked);
             const noneChecked = types.every(tp => !document.getElementById('cb-' + tp)?.checked);
             const cbAlle = document.getElementById('cb-alle');
@@ -2990,7 +2984,7 @@
         function renderUsageLogTable() {
             const tbody   = document.getElementById('usageLogBody');
             const countEl = document.getElementById('usage-log-count');
-            const activeTypes = ['GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T']
+            const activeTypes = ['GETFEATUREINFO', 'GETPRINT', 'WFS-T']
                 .filter(tp => { const cb = document.getElementById('cb-' + tp); return cb ? cb.checked : true; });
 
             const sorted = [...usageLogData]
