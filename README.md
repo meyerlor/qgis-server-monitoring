@@ -59,6 +59,12 @@ System metrics (CPU, RAM) are collected as a secondary data source for correlati
 
 <img width="1504" height="898" alt="grafik" src="https://github.com/user-attachments/assets/bc78828a-367d-49d0-a488-773acda886da" />
 
+
+**Deep Usage insight:**
+
+<img width="1488" height="995" alt="grafik" src="https://github.com/user-attachments/assets/97e45b88-b0e7-4396-a347-cb18a2307683" />
+
+
 ## Prerequisites
 
 ### 1. QGIS Server logging
