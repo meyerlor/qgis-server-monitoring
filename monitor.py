@@ -180,7 +180,27 @@ def init_database():
     ''')
     
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_sys_timestamp ON system_metrics(timestamp)')
-    
+
+    # Usage log table - tracks all request types (GETMAP, GETFEATUREINFO, GETPRINT, GETFEATURE, WFS-T)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS usage_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME NOT NULL,
+            pool TEXT,
+            project TEXT,
+            user TEXT,
+            layers TEXT,
+            request_type TEXT NOT NULL,
+            action TEXT,
+            response_time_ms INTEGER,
+            request_id TEXT
+        )
+    ''')
+
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_log(timestamp)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_pool ON usage_log(pool)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_type ON usage_log(request_type)')
+
     conn.commit()
     conn.close()
     debug_log(f"Database initialized at {DB_PATH}")
@@ -206,6 +226,20 @@ def save_request_to_db(pool, project, user, layers, request_type, response_time_
         debug_log(f"DEBUG [DB] ✗ ERROR saving request to DB: {e}")
         import traceback
         traceback.print_exc()
+
+def save_usage_log_to_db(pool, project, user, layers, request_type, action, response_time_ms, request_id):
+    """Save a usage log entry (any request type) to usage_log table"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO usage_log (timestamp, pool, project, user, layers, request_type, action, response_time_ms, request_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (datetime.now(), pool, project, user, layers, request_type, action, response_time_ms, request_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        debug_log(f"DEBUG [DB] ✗ ERROR saving usage log: {e}")
 
 def save_system_metrics_to_db(cpu, mem_percent, mem_used_gb, mem_avail_gb, mem_total_gb, disk_read, disk_write, net_sent, net_recv):
     """Save system metrics to the database"""
@@ -233,6 +267,9 @@ def cleanup_old_data():
 
         # Delete system metrics older than retention period
         cursor.execute("DELETE FROM system_metrics WHERE timestamp < datetime('now', '-' || ? || ' days')", [SYSTEM_METRICS_RETENTION_DAYS])
+
+        # Delete usage log entries older than retention period
+        cursor.execute("DELETE FROM usage_log WHERE timestamp < datetime('now', '-' || ? || ' days')", [REQUEST_RETENTION_DAYS])
         
         deleted_requests = cursor.rowcount
         conn.commit()
@@ -318,7 +355,23 @@ def parse_qgis_log_line(line, log_name):
     # DEBUG: Show every line that has a request ID
     if request_id and ('MAP:' in line or 'REQUEST:' in line or 'Request finished' in line.lower()):
         debug_log(f"DEBUG [{log_name}] Processing line with ID [{request_id}]: {line[:150]}")
-    
+
+    # WFS-T Transact detection – detect INSERT/UPDATE/DELETE in WFS lines
+    line_upper = line.upper()
+    if 'WFS' in line_upper and any(op in line_upper for op in ('INSERT', 'UPDATE', 'DELETE')):
+        wfst_action = next((op for op in ('INSERT', 'UPDATE', 'DELETE') if op in line_upper), None)
+        if wfst_action:
+            typename_match = re.search(r'typeName[=:\s]+([^\s&"\'<>]+)', line, re.IGNORECASE)
+            wfst_layer = typename_match.group(1) if typename_match else 'Unknown'
+            user_match = re.search(r'LIZMAP_USER:([^\s]+)', line)
+            wfst_user = user_match.group(1) if user_match else 'Unknown'
+            debug_log(f"DEBUG [{log_name}] WFS-T {wfst_action}: layer={wfst_layer}, user={wfst_user}")
+            socketio.start_background_task(
+                save_usage_log_to_db,
+                log_name, None, wfst_user, wfst_layer,
+                'WFS-T', wfst_action, None, request_id
+            )
+
     # Check for errors/warnings (store for display)
     if 'WARNING' in line or 'WARN' in line:
         log_stats[log_name]['warnings'] += 1
@@ -451,8 +504,30 @@ def parse_qgis_log_line(line, log_name):
                             response_time,
                             request_id
                         )
+                        # Also log to usage_log for Nutzungsprotokoll
+                        socketio.start_background_task(
+                            save_usage_log_to_db,
+                            log_name,
+                            details.get('map', 'Unknown'),
+                            details.get('user', 'Unknown'),
+                            details.get('layers', 'Unknown'),
+                            'GETMAP', None,
+                            response_time, request_id
+                        )
+                    elif request_type.upper() in ('GETFEATUREINFO', 'GETPRINT', 'GETFEATURE'):
+                        # Only in usage_log (not tracked for perf stats)
+                        debug_log(f"DEBUG [{log_name}] ✓ SAVING to UsageLog ({request_type.upper()}): {details.get('map')}")
+                        socketio.start_background_task(
+                            save_usage_log_to_db,
+                            log_name,
+                            details.get('map', 'Unknown'),
+                            details.get('user', 'Unknown'),
+                            details.get('layers', 'Unknown'),
+                            request_type.upper(), None,
+                            response_time, request_id
+                        )
                     else:
-                        debug_log(f"DEBUG [{log_name}] ✗ SKIPPING (not GETMAP): {request_type.upper()}")
+                        debug_log(f"DEBUG [{log_name}] ✗ SKIPPING (not tracked): {request_type.upper()}")
                     
                     # Add to slowest requests if it's in top 5 or list is not full
                     add_to_slowest(log_name, response_time, now, request_id, details)
@@ -1442,6 +1517,365 @@ def get_pool_config():
         display = name.replace('qgis-', '').replace('-', ' ').title()
         pools.append({'key': name, 'display': display, 'index': i})
     return jsonify(pools)
+
+
+@app.route('/api/requests/slowest')
+def get_slowest_requests():
+    """Top 5 slowest GETMAP requests within a configurable time window from DB"""
+    try:
+        minutes = int(request.args.get('minutes', 10))
+        pool = request.args.get('pool', 'all')
+        user_filter = build_user_filter()
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        pool_filter = f" AND pool = '{pool}'" if pool and pool != 'all' else ''
+        cursor.execute(f'''
+            SELECT timestamp, pool, project, user, layers, response_time_ms, request_id
+            FROM requests
+            WHERE timestamp >= datetime('now', '-' || ? || ' minutes')
+            AND request_type = 'GETMAP'
+            AND LOWER(layers) != 'overview'
+            {user_filter}{pool_filter}
+            ORDER BY response_time_ms DESC
+            LIMIT 5
+        ''', [minutes])
+
+        results = [{
+            'timestamp':        row['timestamp'],
+            'pool':             row['pool'],
+            'project':          row['project'],
+            'user':             row['user'] or 'Unknown',
+            'layers':           row['layers'] or '',
+            'response_time_ms': row['response_time_ms'],
+            'request_id':       row['request_id'] or '',
+        } for row in cursor.fetchall()]
+        conn.close()
+        return jsonify(results)
+    except Exception as e:
+        print(f"Error fetching slowest requests: {e}")
+        return jsonify([]), 500
+
+
+@app.route('/api/analytics/response-distribution')
+def get_response_distribution():
+    """Response time histogram: count of requests per time bucket"""
+    try:
+        from_date = request.args.get('from_date')
+        to_date = request.args.get('to_date')
+        project = request.args.get('project', 'all')
+        user_filter = build_user_filter()
+
+        to_date_eod = to_date + ' 23:59:59' if to_date and len(to_date) == 10 else to_date
+
+        params = [from_date, to_date_eod]
+        extra = ''
+        if project and project != 'all':
+            extra += ' AND project = ?'
+            params.append(project)
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT
+                CASE
+                    WHEN response_time_ms <  500  THEN '0-500'
+                    WHEN response_time_ms <  1000 THEN '500-1000'
+                    WHEN response_time_ms <  2000 THEN '1000-2000'
+                    WHEN response_time_ms <  3000 THEN '2000-3000'
+                    WHEN response_time_ms <  5000 THEN '3000-5000'
+                    ELSE '5000+'
+                END AS bucket,
+                COUNT(*) AS count
+            FROM requests
+            WHERE timestamp >= ? AND timestamp <= ?
+            AND request_type = 'GETMAP'
+            AND LOWER(layers) != 'overview'
+            {user_filter}{extra}
+            GROUP BY bucket
+            ORDER BY MIN(response_time_ms)
+        ''', params)
+        results = [{'bucket': row[0], 'count': row[1]} for row in cursor.fetchall()]
+        conn.close()
+        return jsonify(results)
+    except Exception as e:
+        print(f"Error fetching response distribution: {e}")
+        return jsonify([]), 500
+
+
+@app.route('/api/analytics/layer-rankings')
+def get_layer_rankings():
+    """Top 10 slowest layers by average response time"""
+    try:
+        from_date = request.args.get('from_date')
+        to_date = request.args.get('to_date')
+        project = request.args.get('project', 'all')
+        user_filter = build_user_filter()
+
+        to_date_eod = to_date + ' 23:59:59' if to_date and len(to_date) == 10 else to_date
+
+        params = [from_date, to_date_eod]
+        extra = ''
+        if project and project != 'all':
+            extra += ' AND project = ?'
+            params.append(project)
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT
+                layers,
+                ROUND(AVG(response_time_ms)) AS avg_time,
+                MAX(response_time_ms)         AS max_time,
+                COUNT(*)                      AS count
+            FROM requests
+            WHERE timestamp >= ? AND timestamp <= ?
+            AND request_type = 'GETMAP'
+            AND LOWER(layers) != 'overview'
+            AND layers IS NOT NULL AND layers != ''
+            {user_filter}{extra}
+            GROUP BY layers
+            ORDER BY avg_time DESC
+            LIMIT 10
+        ''', params)
+        results = [{'layer': row[0], 'avg_time': row[1], 'max_time': row[2], 'count': row[3]}
+                   for row in cursor.fetchall()]
+        conn.close()
+        return jsonify(results)
+    except Exception as e:
+        print(f"Error fetching layer rankings: {e}")
+        return jsonify([]), 500
+
+
+@app.route('/api/analytics/ausreisser')
+def get_ausreisser():
+    """Requests above a configurable threshold (default 5000ms)"""
+    try:
+        from_date = request.args.get('from_date')
+        to_date = request.args.get('to_date')
+        project = request.args.get('project', 'all')
+        threshold = int(request.args.get('threshold', 5000))
+        user_filter = build_user_filter()
+
+        to_date_eod = to_date + ' 23:59:59' if to_date and len(to_date) == 10 else to_date
+
+        params = [from_date, to_date_eod, threshold]
+        extra = ''
+        if project and project != 'all':
+            extra += ' AND project = ?'
+            params.append(project)
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT timestamp, project, user, layers, response_time_ms
+            FROM requests
+            WHERE timestamp >= ? AND timestamp <= ?
+            AND response_time_ms >= ?
+            AND request_type = 'GETMAP'
+            AND LOWER(layers) != 'overview'
+            {user_filter}{extra}
+            ORDER BY response_time_ms DESC
+            LIMIT 100
+        ''', params)
+        results = [{
+            'timestamp':        row[0],
+            'project':          row[1],
+            'user':             row[2] or 'Unknown',
+            'layers':           row[3] or '-',
+            'response_time_ms': row[4],
+        } for row in cursor.fetchall()]
+        conn.close()
+        return jsonify(results)
+    except Exception as e:
+        print(f"Error fetching Ausreißer: {e}")
+        return jsonify([]), 500
+
+
+# =============================================================================
+# NUTZUNGSPROTOKOLL API
+# =============================================================================
+
+@app.route('/api/usage/log')
+def get_usage_log():
+    """Nutzungsprotokoll: filtered entries from usage_log"""
+    try:
+        days = int(request.args.get('days', 7))
+        req_type = request.args.get('request_type', 'all')
+        user = request.args.get('user', 'all')
+        project = request.args.get('project', 'all')
+        pool = request.args.get('pool', 'all')
+        user_filter = build_user_filter()
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        if days == 0:
+            cutoff = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            cutoff = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+
+        params = [cutoff]
+        query = f'''
+            SELECT id, timestamp, pool, project, user, layers, request_type, action, response_time_ms, request_id
+            FROM usage_log
+            WHERE timestamp >= ?
+            {user_filter}
+        '''
+
+        if req_type != 'all':
+            query += ' AND request_type = ?'
+            params.append(req_type)
+        if user != 'all':
+            query += ' AND user = ?'
+            params.append(user)
+        if project != 'all':
+            query += ' AND project = ?'
+            params.append(project)
+        if pool != 'all':
+            query += ' AND pool = ?'
+            params.append(pool)
+
+        query += ' ORDER BY timestamp DESC LIMIT 2000'
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+
+        result = [{
+            'id':              row['id'],
+            'timestamp':       row['timestamp'],
+            'pool':            row['pool'] or '',
+            'project':         row['project'] or '',
+            'user':            row['user'] or '',
+            'layers':          row['layers'] or '',
+            'request_type':    row['request_type'],
+            'action':          row['action'] or '',
+            'response_time_ms': row['response_time_ms'],
+            'request_id':      row['request_id'] or ''
+        } for row in rows]
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error fetching usage log: {e}")
+        return jsonify([]), 500
+
+
+@app.route('/api/usage/summary')
+def get_usage_summary():
+    """Nutzungsprotokoll: summary – counts per type, top users, top projects, WFS-T, hourly"""
+    try:
+        days = int(request.args.get('days', 7))
+        user_filter = build_user_filter()
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        if days == 0:
+            cutoff = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            cutoff = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+
+        where = f"WHERE timestamp >= '{cutoff}' {user_filter}"
+
+        # Counts per request type
+        cursor.execute(f'''
+            SELECT request_type, COUNT(*) as count
+            FROM usage_log {where}
+            GROUP BY request_type ORDER BY count DESC
+        ''')
+        by_type = [{'type': r[0], 'count': r[1]} for r in cursor.fetchall()]
+
+        # Top users overall
+        cursor.execute(f'''
+            SELECT user, COUNT(*) as count
+            FROM usage_log {where}
+            AND user IS NOT NULL AND user NOT IN ('', 'Unknown')
+            GROUP BY user ORDER BY count DESC LIMIT 20
+        ''')
+        by_user = [{'user': r[0], 'count': r[1]} for r in cursor.fetchall()]
+
+        # Top projects by GetFeatureInfo
+        cursor.execute(f'''
+            SELECT project, COUNT(*) as count
+            FROM usage_log {where}
+            AND request_type = 'GETFEATUREINFO' AND project IS NOT NULL AND project != ''
+            GROUP BY project ORDER BY count DESC LIMIT 10
+        ''')
+        featureinfo_projects = [{'project': r[0], 'count': r[1]} for r in cursor.fetchall()]
+
+        # WFS-T edit action summary
+        cursor.execute(f'''
+            SELECT action, user, layers, COUNT(*) as count
+            FROM usage_log {where}
+            AND request_type = 'WFS-T'
+            GROUP BY action, user, layers ORDER BY count DESC LIMIT 50
+        ''')
+        wfst_summary = [{'action': r[0], 'user': r[1], 'layers': r[2], 'count': r[3]}
+                        for r in cursor.fetchall()]
+
+        # Hourly activity (stacked by type)
+        cursor.execute(f'''
+            SELECT strftime('%Y-%m-%d %H:00:00', timestamp) as hour,
+                   request_type, COUNT(*) as count
+            FROM usage_log {where}
+            GROUP BY hour, request_type ORDER BY hour
+        ''')
+        hourly = [{'hour': r[0], 'type': r[1], 'count': r[2]} for r in cursor.fetchall()]
+
+        conn.close()
+        return jsonify({
+            'by_type':              by_type,
+            'by_user':              by_user,
+            'featureinfo_projects': featureinfo_projects,
+            'wfst_summary':         wfst_summary,
+            'hourly':               hourly,
+        })
+    except Exception as e:
+        print(f"Error fetching usage summary: {e}")
+        return jsonify({}), 500
+
+
+@app.route('/api/usage/users')
+def get_usage_users():
+    """Distinct users in usage_log for filter dropdown"""
+    try:
+        user_filter = build_user_filter()
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT DISTINCT user FROM usage_log
+            WHERE user IS NOT NULL AND user NOT IN ('', 'Unknown')
+            {user_filter}
+            ORDER BY user
+        ''')
+        users = [r[0] for r in cursor.fetchall()]
+        conn.close()
+        return jsonify(users)
+    except Exception as e:
+        print(f"Error fetching usage users: {e}")
+        return jsonify([]), 500
+
+
+@app.route('/api/usage/projects')
+def get_usage_projects():
+    """Distinct projects in usage_log for filter dropdown"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT DISTINCT project FROM usage_log
+            WHERE project IS NOT NULL AND project != ''
+            ORDER BY project
+        ''')
+        projects = [r[0] for r in cursor.fetchall()]
+        conn.close()
+        return jsonify(projects)
+    except Exception as e:
+        print(f"Error fetching usage projects: {e}")
+        return jsonify([]), 500
+
 
 @socketio.on('connect', namespace='/monitoring')
 def handle_connect():

@@ -509,6 +509,7 @@
             <button class="tab" onclick="switchTab('requests')" data-i18n="tab_requests">📝 Request History</button>
             <button class="tab" onclick="switchTab('analytics')" data-i18n="tab_analytics">📈 Analytics</button>
             <button class="tab" onclick="switchTab('system')" data-i18n="tab_system">💻 System History</button>
+            <button class="tab" onclick="switchTab('usage')" data-i18n="tab_usage">👁️ Nutzungsprotokoll</button>
         </div>
         
         <!-- Tab 1: Live Monitor -->
@@ -775,6 +776,17 @@
             </div>
             
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; margin-top: 20px;">
+                <!-- Response Time Distribution -->
+                <div class="card">
+                    <h2 data-i18n="response_distribution">📊 Response-Zeit Verteilung</h2>
+                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="response_distribution_desc">
+                        Wie sind die Response-Zeiten verteilt?
+                    </p>
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="responseDistributionChart"></canvas>
+                    </div>
+                </div>
+
                 <!-- Peak Hours -->
                 <div class="card">
                     <h2 data-i18n="peak_hours">🔥 Peak Hours</h2>
@@ -785,8 +797,19 @@
                         <canvas id="peakHoursChart"></canvas>
                     </div>
                 </div>
+
+                <!-- Day of Week Analysis -->
+                <div class="card">
+                    <h2 data-i18n="day_of_week">📅 Wochentag-Analyse</h2>
+                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="day_of_week_desc">
+                        Requests pro Wochentag
+                    </p>
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="dayOfWeekChart"></canvas>
+                    </div>
+                </div>
             </div>
-            
+
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; margin-top: 20px;">
                 <!-- Top Slowest Projects -->
                 <div class="card">
@@ -798,7 +821,18 @@
                         <canvas id="slowestProjectsChart"></canvas>
                     </div>
                 </div>
-                
+
+                <!-- Layer Rankings -->
+                <div class="card">
+                    <h2 data-i18n="layer_rankings">🗂️ Top 10 langsamste Layer</h2>
+                    <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="layer_rankings_desc">
+                        Durchschnittliche Response-Zeit pro Layer
+                    </p>
+                    <div class="chart-container" style="height: 350px;">
+                        <canvas id="layerRankingsChart"></canvas>
+                    </div>
+                </div>
+
                 <!-- Pool Performance Comparison -->
                 <div class="card">
                     <h2 data-i18n="pool_comparison">⚖️ Pool Performance Vergleich</h2>
@@ -810,7 +844,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Request Volume vs Performance -->
             <div class="card" style="margin-top: 20px;">
                 <h2 data-i18n="volume_vs_perf">📊 Request-Volume vs Performance</h2>
@@ -821,17 +855,46 @@
                     <canvas id="volumePerformanceChart"></canvas>
                 </div>
             </div>
-            
-            <!-- Day of Week Analysis -->
+
+            <!-- Ausreißer -->
             <div class="card" style="margin-top: 20px;">
-                <h2 data-i18n="day_of_week">📅 Wochentag-Analyse</h2>
-                <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 15px;" data-i18n="day_of_week_desc">
-                    Requests pro Wochentag
-                </p>
-                <div class="chart-container" style="height: 300px;">
-                    <canvas id="dayOfWeekChart"></canvas>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:10px;">
+                    <div>
+                        <h2 style="margin:0;" data-i18n="ausreisser_title">⚠️ Ausreißer – besonders langsame Requests</h2>
+                        <p style="color: #94a3b8; font-size: 0.9em; margin-top:6px;" data-i18n="ausreisser_desc">
+                            Requests oberhalb des Schwellwerts (max. 100 Treffer, sortiert nach Dauer)
+                        </p>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <label style="color:#94a3b8; font-size:0.9em; font-weight:600;" data-i18n="threshold_ms">Schwellwert (ms)</label>
+                        <input type="number" id="ausreisser-threshold" value="5000" min="500" step="500"
+                               style="width:100px; padding:6px 10px; background:#0f172a; border:2px solid #334155;
+                                      border-radius:6px; color:#e2e8f0; font-size:0.95em; min-width:unset;">
+                        <button onclick="loadAusreisser()"
+                                style="padding:6px 14px; background:#3b82f6; border:none; color:white;
+                                       border-radius:6px; cursor:pointer; font-weight:600; font-size:0.95em;" data-i18n="refresh">
+                            🔄 Aktualisieren
+                        </button>
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="data-table" id="ausreisserTable">
+                        <thead>
+                            <tr>
+                                <th data-i18n="timestamp">Timestamp</th>
+                                <th data-i18n="project">Projekt</th>
+                                <th>User</th>
+                                <th data-i18n="duration_ms">Dauer (ms)</th>
+                                <th>Layer</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ausreisserBody">
+                            <tr><td colspan="5" class="no-data" data-i18n="run_analysis_first">Bitte Analyse aktualisieren</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
+
         </div>
         
         <!-- Tab 4: System History -->
@@ -862,8 +925,151 @@
                 </div>
             </div>
         </div>
+
+        <!-- Tab 5: Nutzungsprotokoll -->
+        <div id="tab-usage" class="tab-content">
+
+            <!-- Filter bar -->
+            <div class="filters" style="flex-wrap:wrap; gap:15px; align-items:flex-end;">
+                <div class="filter-group">
+                    <label class="filter-label" data-i18n="timerange">Zeitraum</label>
+                    <select id="usage-days" onchange="loadUsage()">
+                        <option value="0" data-i18n="today">Heute</option>
+                        <option value="1" data-i18n="last_24_hours">Letzte 24h</option>
+                        <option value="7" selected data-i18n="last_7_days">Letzte 7 Tage</option>
+                        <option value="30" data-i18n="last_30_days">Letzte 30 Tage</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label" data-i18n="action_type">Aktionstyp</label>
+                    <select id="usage-type" onchange="loadUsageLog()">
+                        <option value="all" data-i18n="all_types">Alle Typen</option>
+                        <option value="GETMAP">Kartenaufruf (GETMAP)</option>
+                        <option value="GETFEATUREINFO">Sachdatenabfrage (GetFeatureInfo)</option>
+                        <option value="GETPRINT">Drucken (GetPrint)</option>
+                        <option value="GETFEATURE">Datenexport WFS (GetFeature)</option>
+                        <option value="WFS-T">Editieren (WFS-T)</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">User</label>
+                    <select id="usage-user" onchange="loadUsageLog()">
+                        <option value="all" data-i18n="all_users">Alle Benutzer</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label" data-i18n="project">Projekt</label>
+                    <select id="usage-project" onchange="loadUsageLog()">
+                        <option value="all" data-i18n="all_projects">Alle Projekte</option>
+                    </select>
+                </div>
+                <div class="filter-group" style="display: flex; align-items: center; gap: 8px;">
+                    <label style="color: #94a3b8; font-size: 0.85em; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="usage-include-admin">
+                        <span data-i18n="include_admin">Admin einbeziehen</span>
+                    </label>
+                </div>
+                <div class="filter-group" style="display: flex; align-items: center; gap: 8px;">
+                    <label style="color: #94a3b8; font-size: 0.85em; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="usage-include-anonymous">
+                        <span data-i18n="include_anonymous">Anonyme einbeziehen</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- KPI cards -->
+            <div id="usage-kpi-row" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:15px; margin-bottom:20px;"></div>
+
+            <!-- Charts -->
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:20px; margin-bottom:20px;">
+                <div class="card">
+                    <h2 data-i18n="usage_hourly_title">📊 Aktivität nach Typ (stündlich)</h2>
+                    <div class="chart-container" style="height:280px;">
+                        <canvas id="usageHourlyChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2 data-i18n="usage_top_users">👤 Top-Benutzer (gesamt)</h2>
+                    <div class="chart-container" style="height:280px;">
+                        <canvas id="usageUserChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2 data-i18n="usage_featureinfo_projects">🔍 Sachdatenabfragen je Projekt</h2>
+                    <div class="chart-container" style="height:280px;">
+                        <canvas id="usageFeatureInfoChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2 data-i18n="usage_wfst_title">✏️ Editier-Aktionen (WFS-T)</h2>
+                    <div id="usageWfstTable" style="overflow-y:auto; max-height:280px;">
+                        <div class="no-data" data-i18n="no_wfst_data">Keine WFS-T Daten im Zeitraum</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detail log -->
+            <div class="card">
+                <div style="display:flex; flex-wrap:wrap; align-items:center; gap:16px; margin-bottom:12px;">
+                    <h2 style="margin:0;" data-i18n="usage_detail_log">📋 Detailprotokoll <span id="usage-log-count" style="font-size:0.75em; color:#64748b; font-weight:400;"></span></h2>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                        <span style="color:#64748b; font-size:0.85em; font-weight:600;" data-i18n="show">Anzeigen:</span>
+                        <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none; padding:2px 7px; border-radius:4px; border:1px solid #475569; background:#1e293b;">
+                            <input type="checkbox" id="cb-alle" checked onchange="toggleAlleCheckbox()"
+                                   style="accent-color:#94a3b8; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
+                            <span style="color:#94a3b8; font-size:0.8em; font-weight:600;" data-i18n="all">Alle</span>
+                        </label>
+                        <span style="color:#334155;">|</span>
+                        <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
+                            <input type="checkbox" id="cb-GETMAP" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
+                                   style="accent-color:#3b82f6; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
+                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#3b82f6;color:#fff;font-size:0.8em;font-weight:600;">Karte</span>
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
+                            <input type="checkbox" id="cb-GETFEATUREINFO" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
+                                   style="accent-color:#22c55e; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
+                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#22c55e;color:#fff;font-size:0.8em;font-weight:600;">Sachdaten</span>
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
+                            <input type="checkbox" id="cb-GETPRINT" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
+                                   style="accent-color:#f59e0b; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
+                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#f59e0b;color:#fff;font-size:0.8em;font-weight:600;">Drucken</span>
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
+                            <input type="checkbox" id="cb-GETFEATURE" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
+                                   style="accent-color:#a78bfa; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
+                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#a78bfa;color:#fff;font-size:0.8em;font-weight:600;">Export</span>
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
+                            <input type="checkbox" id="cb-WFS-T" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
+                                   style="accent-color:#ef4444; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
+                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#ef4444;color:#fff;font-size:0.8em;font-weight:600;">Editieren</span>
+                        </label>
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="data-table" id="usageLogTable">
+                        <thead>
+                            <tr>
+                                <th onclick="sortUsageTable('timestamp')" data-i18n="timestamp">Zeitpunkt <span class="sort-icon">↕</span></th>
+                                <th onclick="sortUsageTable('request_type')" data-i18n="type">Typ <span class="sort-icon">↕</span></th>
+                                <th onclick="sortUsageTable('action')" data-i18n="action">Aktion <span class="sort-icon">↕</span></th>
+                                <th onclick="sortUsageTable('user')">User <span class="sort-icon">↕</span></th>
+                                <th onclick="sortUsageTable('project')" data-i18n="project">Projekt <span class="sort-icon">↕</span></th>
+                                <th>Layer</th>
+                                <th onclick="sortUsageTable('response_time_ms')">ms <span class="sort-icon">↕</span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="usageLogBody">
+                            <tr><td colspan="7" class="loading" data-i18n="loading">Lade Daten...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
     </div>
-    
+
     <script>
         // =====================================================================
         // i18n – Translations
@@ -968,6 +1174,33 @@
                 // Show more/less
                 show_less: '▲ Weniger anzeigen ({n} ausgeblendet)',
                 show_all: '▼ Alle anzeigen ({n} weitere)',
+                // Nutzungsprotokoll tab
+                tab_usage: '👁️ Nutzungsprotokoll',
+                // Analytics additions
+                response_distribution: '📊 Response-Zeit Verteilung',
+                response_distribution_desc: 'Wie sind die Response-Zeiten verteilt?',
+                layer_rankings: '🗂️ Top 10 langsamste Layer',
+                layer_rankings_desc: 'Durchschnittliche Response-Zeit pro Layer',
+                ausreisser_title: '⚠️ Ausreißer – besonders langsame Requests',
+                ausreisser_desc: 'Requests oberhalb des Schwellwerts (max. 100 Treffer, sortiert nach Dauer)',
+                threshold_ms: 'Schwellwert (ms)',
+                refresh: '🔄 Aktualisieren',
+                duration_ms: 'Dauer (ms)',
+                run_analysis_first: 'Bitte Analyse aktualisieren',
+                timestamp: 'Zeitpunkt',
+                action: 'Aktion',
+                // Usage tab
+                all_types: 'Alle Typen',
+                all_users: 'Alle Benutzer',
+                action_type: 'Aktionstyp',
+                usage_hourly_title: '📊 Aktivität nach Typ (stündlich)',
+                usage_top_users: '👤 Top-Benutzer (gesamt)',
+                usage_featureinfo_projects: '🔍 Sachdatenabfragen je Projekt',
+                usage_wfst_title: '✏️ Editier-Aktionen (WFS-T)',
+                no_wfst_data: 'Keine WFS-T Daten im Zeitraum',
+                usage_detail_log: '📋 Detailprotokoll',
+                show: 'Anzeigen:',
+                all: 'Alle',
             },
             en: {
                 // Tabs
@@ -1068,6 +1301,33 @@
                 // Show more/less
                 show_less: '▲ Show less ({n} hidden)',
                 show_all: '▼ Show all ({n} more)',
+                // Usage log tab
+                tab_usage: '👁️ Usage Log',
+                // Analytics additions
+                response_distribution: '📊 Response Time Distribution',
+                response_distribution_desc: 'How are response times distributed?',
+                layer_rankings: '🗂️ Top 10 Slowest Layers',
+                layer_rankings_desc: 'Average response time per layer',
+                ausreisser_title: '⚠️ Outliers – particularly slow requests',
+                ausreisser_desc: 'Requests above threshold (max. 100 results, sorted by duration)',
+                threshold_ms: 'Threshold (ms)',
+                refresh: '🔄 Refresh',
+                duration_ms: 'Duration (ms)',
+                run_analysis_first: 'Please refresh analysis',
+                timestamp: 'Timestamp',
+                action: 'Action',
+                // Usage tab
+                all_types: 'All Types',
+                all_users: 'All Users',
+                action_type: 'Action Type',
+                usage_hourly_title: '📊 Activity by Type (hourly)',
+                usage_top_users: '👤 Top Users (total)',
+                usage_featureinfo_projects: '🔍 Feature Info Queries per Project',
+                usage_wfst_title: '✏️ Edit Actions (WFS-T)',
+                no_wfst_data: 'No WFS-T data in period',
+                usage_detail_log: '📋 Detail Log',
+                show: 'Show:',
+                all: 'All',
             }
         };
 
@@ -1375,6 +1635,8 @@
         }
         
         // Tab switching
+        let usageRefreshInterval = null;
+
         function switchTab(tabName) {
             // Hide all tabs
             document.querySelectorAll('.tab-content').forEach(tab => {
@@ -1383,7 +1645,7 @@
             document.querySelectorAll('.tab').forEach(btn => {
                 btn.classList.remove('active');
             });
-            
+
             // Clear existing refresh intervals
             if (requestHistoryRefreshInterval) {
                 clearInterval(requestHistoryRefreshInterval);
@@ -1393,11 +1655,15 @@
                 clearInterval(systemHistoryRefreshInterval);
                 systemHistoryRefreshInterval = null;
             }
-            
+            if (usageRefreshInterval) {
+                clearInterval(usageRefreshInterval);
+                usageRefreshInterval = null;
+            }
+
             // Show selected tab
             document.getElementById('tab-' + tabName).classList.add('active');
             event.target.classList.add('active');
-            
+
             // Load data for the tab and set up auto-refresh
             if (tabName === 'requests') {
                 loadRequestHistory();
@@ -1415,6 +1681,11 @@
                 }, 5000);
             } else if (tabName === 'analytics') {
                 initializeAnalytics();
+            } else if (tabName === 'usage') {
+                initUsageTab();
+                usageRefreshInterval = setInterval(() => {
+                    loadUsage();
+                }, 30000);
             }
         }
         
@@ -1931,7 +2202,81 @@
             }
         });
 
+        const responseDistributionChart = new Chart(document.getElementById('responseDistributionChart'), {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{ label: 'Anzahl Requests', data: [], backgroundColor: '#3b82f6' }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
+                    x: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } }
+                }
+            }
+        });
+
+        const layerRankingsChart = new Chart(document.getElementById('layerRankingsChart'), {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [
+                    { label: 'Ø Response Zeit (ms)', data: [], backgroundColor: '#f59e0b' },
+                    { label: 'Max (ms)', data: [], backgroundColor: 'rgba(239,68,68,0.5)' }
+                ]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, labels: { color: '#94a3b8' } },
+                    tooltip: {
+                        callbacks: {
+                            afterLabel: function(context) {
+                                const idx = context.dataIndex;
+                                return 'Requests: ' + (layerRankingsChart._countData?.[idx] ?? '');
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
+                    y: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } }
+                }
+            }
+        });
+
         // Analytics Functions
+        async function loadAusreisser() {
+            const fromDate = document.getElementById('analytics-date-from').value;
+            const toDate   = document.getElementById('analytics-date-to').value;
+            const project  = document.getElementById('analytics-project').value;
+            const threshold = document.getElementById('ausreisser-threshold').value || 5000;
+            if (!fromDate || !toDate) { alert(t('alert_select_period')); return; }
+            const uf = analyticsUserParams();
+            const tbody = document.getElementById('ausreisserBody');
+            tbody.innerHTML = `<tr><td colspan="5" class="loading">${t('loading')}</td></tr>`;
+            try {
+                const data = await fetch(`/api/analytics/ausreisser?from_date=${fromDate}&to_date=${toDate}&project=${project}&threshold=${threshold}${uf}`).then(r => r.json());
+                if (data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="no-data">Keine Requests über ${threshold} ms im Zeitraum</td></tr>`;
+                } else {
+                    tbody.innerHTML = data.map(r => `
+                        <tr>
+                            <td>${new Date(r.timestamp).toLocaleString('de-DE')}</td>
+                            <td>${r.project}</td>
+                            <td>${r.user || 'Unknown'}</td>
+                            <td class="response-critical">${r.response_time_ms}</td>
+                            <td title="${r.layers}">${r.layers}</td>
+                        </tr>`).join('');
+                }
+            } catch(e) {
+                tbody.innerHTML = `<tr><td colspan="5" class="no-data">${t('error_loading')}</td></tr>`;
+            }
+        }
+
         async function loadAnalytics() {
             const fromDate = document.getElementById('analytics-date-from').value;
             const toDate = document.getElementById('analytics-date-to').value;
@@ -1944,55 +2289,76 @@
             }
 
             try {
-                // Load Performance Trends
                 const uf = analyticsUserParams();
-                const trendsResponse = await fetch(`/api/analytics/performance-trends?from_date=${fromDate}&to_date=${toDate}&project=${project}&aggregation=${aggregation}${uf}`);
-                const trendsData = await trendsResponse.json();
-                
+                const base = `from_date=${fromDate}&to_date=${toDate}&project=${project}`;
+
+                // Performance Trends
+                const trendsData = await fetch(`/api/analytics/performance-trends?${base}&aggregation=${aggregation}${uf}`).then(r => r.json());
                 performanceTrendsChart.data.labels = trendsData.map(d => d.period);
                 performanceTrendsChart.data.datasets[0].data = trendsData.map(d => d.avg_time);
                 performanceTrendsChart.data.datasets[1].data = trendsData.map(d => d.p95);
                 performanceTrendsChart.update();
 
-                // Load Peak Hours (request count per hour)
-                const peakResponse = await fetch(`/api/analytics/peak-hours?from_date=${fromDate}&to_date=${toDate}&project=${project}${uf}`);
-                const peakData = await peakResponse.json();
+                // Response Distribution
+                const distData = await fetch(`/api/analytics/response-distribution?${base}${uf}`).then(r => r.json());
+                responseDistributionChart.data.labels = distData.map(d => d.bucket);
+                responseDistributionChart.data.datasets[0].data = distData.map(d => d.count);
+                responseDistributionChart.update();
 
+                // Peak Hours (request count per hour)
+                const peakData = await fetch(`/api/analytics/peak-hours?${base}${uf}`).then(r => r.json());
                 peakHoursChart.data.labels = peakData.map(d => d.hour);
                 peakHoursChart.data.datasets[0].data = peakData.map(d => d.count);
                 peakHoursChart.update();
 
-                // Load Slowest Projects
-                const projectsResponse = await fetch(`/api/analytics/project-rankings?from_date=${fromDate}&to_date=${toDate}${uf}`);
-                const projectsData = await projectsResponse.json();
-                
+                // Slowest Projects
+                const projectsData = await fetch(`/api/analytics/project-rankings?from_date=${fromDate}&to_date=${toDate}${uf}`).then(r => r.json());
                 slowestProjectsChart.data.labels = projectsData.map(d => d.project).slice(0, 10);
                 slowestProjectsChart.data.datasets[0].data = projectsData.map(d => d.avg_time).slice(0, 10);
                 slowestProjectsChart.update();
 
-                // Load Pool Comparison
-                const poolResponse = await fetch(`/api/analytics/pool-comparison?from_date=${fromDate}&to_date=${toDate}&project=${project}${uf}`);
-                const poolData = await poolResponse.json();
-                
+                // Layer Rankings
+                const layerData = await fetch(`/api/analytics/layer-rankings?${base}${uf}`).then(r => r.json());
+                layerRankingsChart.data.labels = layerData.map(d => d.layer);
+                layerRankingsChart.data.datasets[0].data = layerData.map(d => d.avg_time);
+                layerRankingsChart.data.datasets[1].data = layerData.map(d => d.max_time);
+                layerRankingsChart._countData = layerData.map(d => d.count);
+                layerRankingsChart.update();
+
+                // Pool Comparison
+                const poolData = await fetch(`/api/analytics/pool-comparison?${base}${uf}`).then(r => r.json());
                 poolComparisonChart.data.labels = poolData.map(d => d.pool);
                 poolComparisonChart.data.datasets[0].data = poolData.map(d => d.avg_time);
                 poolComparisonChart.update();
 
-                // Load Volume vs Performance
-                const volumeResponse = await fetch(`/api/analytics/volume-performance?from_date=${fromDate}&to_date=${toDate}&project=${project}&aggregation=${aggregation}${uf}`);
-                const volumeData = await volumeResponse.json();
-                
+                // Volume vs Performance
+                const volumeData = await fetch(`/api/analytics/volume-performance?${base}&aggregation=${aggregation}${uf}`).then(r => r.json());
                 volumePerformanceChart.data.datasets[0].data = volumeData.map(d => ({x: d.volume, y: d.avg_time}));
                 volumePerformanceChart.update();
 
-                // Load Day of Week Analysis (request count per weekday)
-                const dayResponse = await fetch(`/api/analytics/day-of-week?from_date=${fromDate}&to_date=${toDate}&project=${project}${uf}`);
-                const dayData = await dayResponse.json();
+                // Day of Week (request count per weekday)
+                const dayData = await fetch(`/api/analytics/day-of-week?${base}${uf}`).then(r => r.json());
                 const dayNames = t('day_names');
-
                 dayOfWeekChart.data.labels = dayData.map(d => dayNames[d.day_num] || d.day_num);
                 dayOfWeekChart.data.datasets[0].data = dayData.map(d => d.count);
                 dayOfWeekChart.update();
+
+                // Ausreißer
+                const threshold = document.getElementById('ausreisser-threshold').value || 5000;
+                const ausreisserData = await fetch(`/api/analytics/ausreisser?${base}&threshold=${threshold}${uf}`).then(r => r.json());
+                const tbody = document.getElementById('ausreisserBody');
+                if (ausreisserData.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="no-data">Keine Requests über ${threshold} ms im Zeitraum</td></tr>`;
+                } else {
+                    tbody.innerHTML = ausreisserData.map(r => `
+                        <tr>
+                            <td>${new Date(r.timestamp).toLocaleString('de-DE')}</td>
+                            <td>${r.project}</td>
+                            <td>${r.user || 'Unknown'}</td>
+                            <td class="response-critical">${r.response_time_ms}</td>
+                            <td title="${r.layers}">${r.layers}</td>
+                        </tr>`).join('');
+                }
 
             } catch (error) {
                 console.error('Error loading analytics:', error);
@@ -2044,40 +2410,54 @@
         });
         
         socket.on('slowest_requests', function(data) {
-            for (const [pool, requests] of Object.entries(data)) {
-                const tbody = document.getElementById(`slowest-${pool}`);
-                
-                if (!tbody) continue;
-                
-                tbody.innerHTML = '';
-                
-                if (requests.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #94a3b8;">' + t('no_data_available') + '</td></tr>';
-                } else {
-                    requests.forEach(req => {
-                        const row = tbody.insertRow();
-                        
-                        // Color code response time
-                        let responseClass = '';
-                        if (req.response_time > 2000) {
-                            responseClass = 'response-critical';
-                        } else if (req.response_time > 1000) {
-                            responseClass = 'response-slow';
-                        }
-                        
-                        row.innerHTML = `
-                            <td>${req.timestamp}</td>
-                            <td class="${responseClass}">${req.response_time}</td>
-                            <td>${req.request_id}</td>
-                            <td>${req.request_type}</td>
-                            <td>${req.map}</td>
-                            <td>${req.user}</td>
-                            <td title="${req.layers}">${req.layers}</td>
-                        `;
-                    });
-                }
-            }
+            // Tables are now populated via DB-based loadAllSlowestRequests()
         });
+
+        // Per-pool timeframe tracking for slowest requests
+        const slowestMinutes = {};
+        let slowestRefreshInterval = null;
+
+        function setSlowestTimeframe(minutes, poolKey, btn) {
+            slowestMinutes[poolKey] = minutes;
+            // Only deactivate buttons for this pool
+            document.querySelectorAll(`[id^="slowest-btn-${poolKey}-"]`).forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            loadSlowestForPool(poolKey);
+        }
+
+        async function loadSlowestForPool(poolKey) {
+            const minutes = slowestMinutes[poolKey] || 10;
+            const tbody = document.getElementById(`slowest-${poolKey}`);
+            if (!tbody) return;
+            const uf = reqUserParams();
+            try {
+                const data = await fetch(`/api/requests/slowest?minutes=${minutes}&pool=${poolKey}${uf}`).then(r => r.json());
+                if (data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#94a3b8;">${t('no_data_available')}</td></tr>`;
+                } else {
+                    tbody.innerHTML = data.map(r => {
+                        const cls = r.response_time_ms > 2000 ? 'response-critical' : r.response_time_ms > 1000 ? 'response-slow' : '';
+                        return `<tr>
+                            <td>${new Date(r.timestamp).toLocaleTimeString('de-DE')}</td>
+                            <td class="${cls}">${r.response_time_ms}</td>
+                            <td>${r.project}</td>
+                            <td>${r.user || 'Unknown'}</td>
+                            <td title="${r.layers}">${r.layers}</td>
+                        </tr>`;
+                    }).join('');
+                }
+            } catch(e) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#94a3b8;">${t('no_data_available')}</td></tr>`;
+            }
+        }
+
+        function loadAllSlowestRequests() {
+            if (!window._poolConfig) return;
+            window._poolConfig.forEach(pool => loadSlowestForPool(pool.key));
+        }
+
+        // Auto-refresh slowest tables every 10 seconds
+        slowestRefreshInterval = setInterval(loadAllSlowestRequests, 10000);
         
         socket.on('issues_update', function(data) {
             updateIssuesList(data);
@@ -2525,26 +2905,35 @@
                     wrapper.className = 'card';
                     wrapper.style.cssText = 'grid-column: 1 / -1;';
                     wrapper.innerHTML = `
-                        <h2>${pool.display}: <span data-i18n="slowest_requests_title">${t('slowest_requests_title')}</span></h2>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                            <h2 style="margin:0;">${pool.display}: <span data-i18n="slowest_requests_title">${t('slowest_requests_title')}</span></h2>
+                            <div style="display:flex; gap:6px;">
+                                <button class="timeframe-btn active" id="slowest-btn-${pool.key}-10" onclick="setSlowestTimeframe(10, '${pool.key}', this)">10 Min</button>
+                                <button class="timeframe-btn" id="slowest-btn-${pool.key}-30" onclick="setSlowestTimeframe(30, '${pool.key}', this)">30 Min</button>
+                                <button class="timeframe-btn" id="slowest-btn-${pool.key}-60" onclick="setSlowestTimeframe(60, '${pool.key}', this)">1 Stunde</button>
+                                <button class="timeframe-btn" id="slowest-btn-${pool.key}-1440" onclick="setSlowestTimeframe(1440, '${pool.key}', this)">24 Stunden</button>
+                            </div>
+                        </div>
                         <table class="slowest-table">
                             <thead>
                                 <tr>
                                     <th>Timestamp</th>
                                     <th data-i18n="response_time">${t('response_time')}</th>
-                                    <th>Request ID</th>
-                                    <th data-i18n="type">${t('type')}</th>
                                     <th data-i18n="project">${t('project')}</th>
                                     <th>User</th>
                                     <th>Layer</th>
                                 </tr>
                             </thead>
                             <tbody id="slowest-${pool.key}">
-                                <tr><td colspan="7" style="text-align: center; color: #94a3b8;" data-i18n="waiting_data">${t('waiting_data')}</td></tr>
+                                <tr><td colspan="5" style="text-align: center; color: #94a3b8;" data-i18n="waiting_data">${t('waiting_data')}</td></tr>
                             </tbody>
                         </table>
                     `;
                     slowestContainer.appendChild(wrapper);
                 });
+
+                // Load slowest requests for all pools
+                loadAllSlowestRequests();
 
                 // --- Generate Pool Filter Options ---
                 const filterSelect = document.getElementById('filter-pool');
@@ -2566,6 +2955,271 @@
                 console.error('Error loading pool config:', error);
             }
         }
+
+        // =====================================================================
+        // NUTZUNGSPROTOKOLL JS
+        // =====================================================================
+
+        const USAGE_TYPE_COLORS = {
+            'GETMAP':         '#3b82f6',
+            'GETFEATUREINFO': '#22c55e',
+            'GETPRINT':       '#f59e0b',
+            'GETFEATURE':     '#a78bfa',
+            'WFS-T':          '#ef4444'
+        };
+        const USAGE_TYPE_LABELS = {
+            'GETMAP':         'Karte',
+            'GETFEATUREINFO': 'Sachdaten',
+            'GETPRINT':       'Drucken',
+            'GETFEATURE':     'Export',
+            'WFS-T':          'Editieren'
+        };
+
+        let usageHourlyChart     = null;
+        let usageUserChart       = null;
+        let usageFeatureInfoChart = null;
+        let usageLogData         = [];
+        let usageSortCol         = 'timestamp';
+        let usageSortOrder       = 'desc';
+        let usageTabInitialized  = false;
+
+        function usageUserParams() {
+            const ia  = document.getElementById('usage-include-admin')?.checked ? '1' : '0';
+            const ian = document.getElementById('usage-include-anonymous')?.checked ? '1' : '0';
+            return `&include_admin=${ia}&include_anonymous=${ian}`;
+        }
+
+        function usageTypeBadge(type, action) {
+            const color = USAGE_TYPE_COLORS[type] || '#64748b';
+            const label = USAGE_TYPE_LABELS[type] || type;
+            const act   = action ? ` <span style="opacity:0.85;font-size:0.85em;">${action}</span>` : '';
+            return `<span style="display:inline-block;padding:2px 9px;border-radius:4px;background:${color};color:#fff;font-size:0.8em;font-weight:600;">${label}${act}</span>`;
+        }
+
+        function initUsageCharts() {
+            const baseScales = {
+                y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
+                x: { ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }, grid: { color: '#1e293b' } }
+            };
+            if (usageHourlyChart) usageHourlyChart.destroy();
+            usageHourlyChart = new Chart(document.getElementById('usageHourlyChart'), {
+                type: 'bar',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: true, labels: { color: '#94a3b8', boxWidth: 12 } } },
+                    scales: { y: { ...baseScales.y, stacked: true }, x: { ...baseScales.x, stacked: true } }
+                }
+            });
+            if (usageUserChart) usageUserChart.destroy();
+            usageUserChart = new Chart(document.getElementById('usageUserChart'), {
+                type: 'bar',
+                data: { labels: [], datasets: [{ label: 'Aktionen', data: [], backgroundColor: '#3b82f6' }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
+                        y: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } }
+                    }
+                }
+            });
+            if (usageFeatureInfoChart) usageFeatureInfoChart.destroy();
+            usageFeatureInfoChart = new Chart(document.getElementById('usageFeatureInfoChart'), {
+                type: 'bar',
+                data: { labels: [], datasets: [{ label: 'GetFeatureInfo', data: [], backgroundColor: '#22c55e' }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
+                        y: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } }
+                    }
+                }
+            });
+        }
+
+        async function initUsageTab() {
+            initUsageCharts();
+            if (!usageTabInitialized) {
+                try {
+                    const uf = usageUserParams();
+                    const [users, projects] = await Promise.all([
+                        fetch(`/api/usage/users?${uf.slice(1)}`).then(r => r.json()),
+                        fetch('/api/usage/projects').then(r => r.json())
+                    ]);
+                    const uSel = document.getElementById('usage-user');
+                    users.forEach(u => {
+                        const o = document.createElement('option'); o.value = u; o.textContent = u;
+                        uSel.appendChild(o);
+                    });
+                    const pSel = document.getElementById('usage-project');
+                    projects.forEach(p => {
+                        const o = document.createElement('option'); o.value = p; o.textContent = p;
+                        pSel.appendChild(o);
+                    });
+                } catch(e) { console.error('Usage filter init error:', e); }
+                usageTabInitialized = true;
+            }
+            await loadUsage();
+        }
+
+        async function loadUsage() {
+            await Promise.all([loadUsageSummary(), loadUsageLog()]);
+        }
+
+        async function loadUsageSummary() {
+            const days = document.getElementById('usage-days').value;
+            const uf   = usageUserParams();
+            try {
+                const data = await fetch(`/api/usage/summary?days=${days}${uf}`).then(r => r.json());
+
+                // KPI cards
+                const totals = {};
+                (data.by_type || []).forEach(t => { totals[t.type] = t.count; });
+                const total  = Object.values(totals).reduce((a, b) => a + b, 0);
+                const types  = ['GETMAP', 'GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T'];
+                document.getElementById('usage-kpi-row').innerHTML =
+                    [{ label: 'Gesamt', count: total, color: '#60a5fa' },
+                     ...types.map(tp => ({ label: USAGE_TYPE_LABELS[tp], count: totals[tp] || 0, color: USAGE_TYPE_COLORS[tp] }))
+                    ].map(k => `
+                        <div class="card" style="text-align:center;border-top:3px solid ${k.color};padding:15px;">
+                            <div style="font-size:2em;font-weight:700;color:${k.color};">${k.count}</div>
+                            <div style="color:#94a3b8;font-size:0.85em;margin-top:4px;">${k.label}</div>
+                        </div>`).join('');
+
+                // Hourly stacked chart
+                const hourlyRaw = data.hourly || [];
+                const hours     = [...new Set(hourlyRaw.map(h => h.hour))].sort();
+                const usedTypes = [...new Set(hourlyRaw.map(h => h.type))];
+                usageHourlyChart.data.labels = hours.map(h => {
+                    const d = new Date(h);
+                    return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' +
+                           d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                });
+                usageHourlyChart.data.datasets = usedTypes.map(tp => ({
+                    label: USAGE_TYPE_LABELS[tp] || tp,
+                    data:  hours.map(h => { const f = hourlyRaw.find(r => r.hour === h && r.type === tp); return f ? f.count : 0; }),
+                    backgroundColor: USAGE_TYPE_COLORS[tp] || '#64748b'
+                }));
+                usageHourlyChart.update();
+
+                // Top users
+                const users = (data.by_user || []).slice(0, 12);
+                usageUserChart.data.labels           = users.map(u => u.user);
+                usageUserChart.data.datasets[0].data = users.map(u => u.count);
+                usageUserChart.update();
+
+                // FeatureInfo projects
+                const fiProjects = data.featureinfo_projects || [];
+                usageFeatureInfoChart.data.labels           = fiProjects.map(p => p.project);
+                usageFeatureInfoChart.data.datasets[0].data = fiProjects.map(p => p.count);
+                usageFeatureInfoChart.update();
+
+                // WFS-T table
+                const wfst = data.wfst_summary || [];
+                document.getElementById('usageWfstTable').innerHTML = wfst.length === 0
+                    ? '<div class="no-data">Keine WFS-T Daten im Zeitraum</div>'
+                    : `<table style="width:100%;border-collapse:collapse;font-size:0.9em;">
+                        <thead><tr>
+                            <th style="text-align:left;padding:6px 10px;color:#94a3b8;border-bottom:1px solid #334155;">Aktion</th>
+                            <th style="text-align:left;padding:6px 10px;color:#94a3b8;border-bottom:1px solid #334155;">User</th>
+                            <th style="text-align:left;padding:6px 10px;color:#94a3b8;border-bottom:1px solid #334155;">Layer</th>
+                            <th style="text-align:right;padding:6px 10px;color:#94a3b8;border-bottom:1px solid #334155;">Anzahl</th>
+                        </tr></thead>
+                        <tbody>${wfst.map(r => `<tr>
+                            <td style="padding:5px 10px;border-bottom:1px solid #1e293b;">
+                                <span style="color:${r.action==='INSERT'?'#22c55e':r.action==='DELETE'?'#ef4444':'#f59e0b'};font-weight:600;">${r.action||'?'}</span>
+                            </td>
+                            <td style="padding:5px 10px;border-bottom:1px solid #1e293b;">${r.user||'?'}</td>
+                            <td style="padding:5px 10px;border-bottom:1px solid #1e293b;">${r.layers||'?'}</td>
+                            <td style="padding:5px 10px;border-bottom:1px solid #1e293b;text-align:right;font-weight:600;">${r.count}</td>
+                        </tr>`).join('')}</tbody></table>`;
+
+            } catch(e) { console.error('loadUsageSummary error:', e); }
+        }
+
+        async function loadUsageLog() {
+            const days    = document.getElementById('usage-days').value;
+            const type    = document.getElementById('usage-type').value;
+            const user    = document.getElementById('usage-user').value;
+            const project = document.getElementById('usage-project').value;
+            const uf      = usageUserParams();
+            try {
+                usageLogData = await fetch(
+                    `/api/usage/log?days=${days}&request_type=${type}&user=${user}&project=${project}${uf}`
+                ).then(r => r.json());
+                renderUsageLogTable();
+            } catch(e) { console.error('loadUsageLog error:', e); }
+        }
+
+        function toggleAlleCheckbox() {
+            const checked = document.getElementById('cb-alle').checked;
+            ['GETMAP', 'GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T'].forEach(tp => {
+                const cb = document.getElementById('cb-' + tp);
+                if (cb) cb.checked = checked;
+            });
+            renderUsageLogTable();
+        }
+
+        function syncAlleCheckbox() {
+            const types = ['GETMAP', 'GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T'];
+            const allChecked  = types.every(tp => document.getElementById('cb-' + tp)?.checked);
+            const noneChecked = types.every(tp => !document.getElementById('cb-' + tp)?.checked);
+            const cbAlle = document.getElementById('cb-alle');
+            cbAlle.indeterminate = !allChecked && !noneChecked;
+            cbAlle.checked = allChecked;
+        }
+
+        function renderUsageLogTable() {
+            const tbody   = document.getElementById('usageLogBody');
+            const countEl = document.getElementById('usage-log-count');
+            const activeTypes = ['GETMAP', 'GETFEATUREINFO', 'GETPRINT', 'GETFEATURE', 'WFS-T']
+                .filter(tp => { const cb = document.getElementById('cb-' + tp); return cb ? cb.checked : true; });
+
+            const sorted = [...usageLogData]
+                .filter(r => activeTypes.includes(r.request_type))
+                .sort((a, b) => {
+                    let va = a[usageSortCol] ?? '';
+                    let vb = b[usageSortCol] ?? '';
+                    if (usageSortCol === 'response_time_ms') { va = va || 0; vb = vb || 0; }
+                    return usageSortOrder === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+                });
+
+            countEl.textContent = `(${sorted.length} Einträge)`;
+            if (!sorted.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="no-data">Keine Daten für diesen Zeitraum/Filter</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = sorted.map(r => {
+                const ts      = new Date(r.timestamp).toLocaleString('de-DE');
+                const badge   = usageTypeBadge(r.request_type, r.action);
+                const ms      = r.response_time_ms != null ? r.response_time_ms + 'ms' : '–';
+                const msClass = r.response_time_ms > 2000 ? 'response-critical' : r.response_time_ms > 1000 ? 'response-slow' : '';
+                const layers  = (r.layers || '–');
+                const layersShort = layers.length > 55 ? layers.substring(0, 55) + '…' : layers;
+                return `<tr>
+                    <td style="white-space:nowrap;">${ts}</td>
+                    <td>${badge}</td>
+                    <td>${r.action || '–'}</td>
+                    <td>${r.user || '–'}</td>
+                    <td title="${r.project}">${r.project || '–'}</td>
+                    <td style="font-size:0.85em;color:#94a3b8;" title="${layers}">${layersShort}</td>
+                    <td class="${msClass}">${ms}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function sortUsageTable(col) {
+            usageSortOrder = (usageSortCol === col && usageSortOrder === 'asc') ? 'desc' : 'asc';
+            usageSortCol   = col;
+            renderUsageLogTable();
+        }
+
+        // =====================================================================
+        // END NUTZUNGSPROTOKOLL JS
+        // =====================================================================
 
         // Initialize pools, then load the rest
         initializePools();
