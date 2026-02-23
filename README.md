@@ -22,9 +22,16 @@ System metrics (CPU, RAM) are collected as a secondary data source for correlati
 - **Configure any number of pools** — Just edit the `QGIS_POOLS` dictionary; the entire dashboard (cards, tables, charts, filters) adapts automatically
 - **Pool comparison chart** — Side-by-side response time comparison across all configured pools
 
+### Usage log (Nutzungsprotokoll)
+- **Print layout tracking** — `GetPrint` and `GetPrintAtlas` requests are logged with the layout name (`TEMPLATE`) and the layers used, stored in separate columns
+- **Lizmap WFS-T editing** — Edits made through QGIS Desktop (WFS Transaction with INSERT/UPDATE/DELETE in the request) are detected and logged with action type and layer name
+- **Lizmap edit form detection** — When Lizmap opens an edit form for a layer that has constrained fields, the `SERVICE=EXPRESSION` call is detected and logged as an edit form open event (deduplicated: one entry per user/layer within 30 seconds). Note: layers without any constrained fields produce no QGIS Server log activity and cannot be detected this way.
+- **Feature info & GetFeature** — `GetFeatureInfo` and `GetFeature` requests are tracked per user, project, and layer
+
 ### Filtering & i18n
 - **Admin / anonymous toggles** — Include or exclude admin and anonymous users from all statistics (default: excluded)
 - **German / English** — Full UI localization with language switcher, persisted in browser
+- **Hide usernames** — Toggle next to the language switcher blurs all usernames across the entire dashboard (useful for presentations); state is persisted in browser
 
 ### Infrastructure
 - **SQLite storage** — Persistent data with configurable retention (default: 180 days for requests, 30 days for system metrics)
