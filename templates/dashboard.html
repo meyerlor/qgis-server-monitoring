@@ -856,44 +856,6 @@
                 </div>
             </div>
 
-            <!-- Ausreißer -->
-            <div class="card" style="margin-top: 20px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:10px;">
-                    <div>
-                        <h2 style="margin:0;" data-i18n="ausreisser_title">⚠️ Ausreißer – besonders langsame Requests</h2>
-                        <p style="color: #94a3b8; font-size: 0.9em; margin-top:6px;" data-i18n="ausreisser_desc">
-                            Requests oberhalb des Schwellwerts (max. 100 Treffer, sortiert nach Dauer)
-                        </p>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <label style="color:#94a3b8; font-size:0.9em; font-weight:600;" data-i18n="threshold_ms">Schwellwert (ms)</label>
-                        <input type="number" id="ausreisser-threshold" value="5000" min="500" step="500"
-                               style="width:100px; padding:6px 10px; background:#0f172a; border:2px solid #334155;
-                                      border-radius:6px; color:#e2e8f0; font-size:0.95em; min-width:unset;">
-                        <button onclick="loadAusreisser()"
-                                style="padding:6px 14px; background:#3b82f6; border:none; color:white;
-                                       border-radius:6px; cursor:pointer; font-weight:600; font-size:0.95em;" data-i18n="refresh">
-                            🔄 Aktualisieren
-                        </button>
-                    </div>
-                </div>
-                <div style="overflow-x:auto;">
-                    <table class="data-table" id="ausreisserTable">
-                        <thead>
-                            <tr>
-                                <th data-i18n="timestamp">Timestamp</th>
-                                <th data-i18n="project">Projekt</th>
-                                <th>User</th>
-                                <th data-i18n="duration_ms">Dauer (ms)</th>
-                                <th>Layer</th>
-                            </tr>
-                        </thead>
-                        <tbody id="ausreisserBody">
-                            <tr><td colspan="5" class="no-data" data-i18n="run_analysis_first">Bitte Analyse aktualisieren</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
 
         </div>
         
@@ -1038,7 +1000,7 @@
                         <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
                             <input type="checkbox" id="cb-GETFEATURE" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
                                    style="accent-color:#a78bfa; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
-                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#a78bfa;color:#fff;font-size:0.8em;font-weight:600;">Export</span>
+                            <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#a78bfa;color:#fff;font-size:0.8em;font-weight:600;">Datenexport</span>
                         </label>
                         <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
                             <input type="checkbox" id="cb-WFS-T" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
@@ -2249,33 +2211,6 @@
         });
 
         // Analytics Functions
-        async function loadAusreisser() {
-            const fromDate = document.getElementById('analytics-date-from').value;
-            const toDate   = document.getElementById('analytics-date-to').value;
-            const project  = document.getElementById('analytics-project').value;
-            const threshold = document.getElementById('ausreisser-threshold').value || 5000;
-            if (!fromDate || !toDate) { alert(t('alert_select_period')); return; }
-            const uf = analyticsUserParams();
-            const tbody = document.getElementById('ausreisserBody');
-            tbody.innerHTML = `<tr><td colspan="5" class="loading">${t('loading')}</td></tr>`;
-            try {
-                const data = await fetch(`/api/analytics/ausreisser?from_date=${fromDate}&to_date=${toDate}&project=${project}&threshold=${threshold}${uf}`).then(r => r.json());
-                if (data.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="5" class="no-data">Keine Requests über ${threshold} ms im Zeitraum</td></tr>`;
-                } else {
-                    tbody.innerHTML = data.map(r => `
-                        <tr>
-                            <td>${new Date(r.timestamp).toLocaleString('de-DE')}</td>
-                            <td>${r.project}</td>
-                            <td>${r.user || 'Unknown'}</td>
-                            <td class="response-critical">${r.response_time_ms}</td>
-                            <td title="${r.layers}">${r.layers}</td>
-                        </tr>`).join('');
-                }
-            } catch(e) {
-                tbody.innerHTML = `<tr><td colspan="5" class="no-data">${t('error_loading')}</td></tr>`;
-            }
-        }
 
         async function loadAnalytics() {
             const fromDate = document.getElementById('analytics-date-from').value;
@@ -2288,82 +2223,60 @@
                 return;
             }
 
-            try {
-                const uf = analyticsUserParams();
-                const base = `from_date=${fromDate}&to_date=${toDate}&project=${project}`;
+            const uf = analyticsUserParams();
+            const base = `from_date=${fromDate}&to_date=${toDate}&project=${project}`;
+            const safe = url => fetch(url).then(r => r.ok ? r.json() : []).catch(() => []);
 
-                // Performance Trends
-                const trendsData = await fetch(`/api/analytics/performance-trends?${base}&aggregation=${aggregation}${uf}`).then(r => r.json());
-                performanceTrendsChart.data.labels = trendsData.map(d => d.period);
-                performanceTrendsChart.data.datasets[0].data = trendsData.map(d => d.avg_time);
-                performanceTrendsChart.data.datasets[1].data = trendsData.map(d => d.p95);
-                performanceTrendsChart.update();
+            // Performance Trends
+            const trendsData = await safe(`/api/analytics/performance-trends?${base}&aggregation=${aggregation}${uf}`);
+            performanceTrendsChart.data.labels = trendsData.map(d => d.period);
+            performanceTrendsChart.data.datasets[0].data = trendsData.map(d => d.avg_time);
+            performanceTrendsChart.data.datasets[1].data = trendsData.map(d => d.p95);
+            performanceTrendsChart.update();
 
-                // Response Distribution
-                const distData = await fetch(`/api/analytics/response-distribution?${base}${uf}`).then(r => r.json());
-                responseDistributionChart.data.labels = distData.map(d => d.bucket);
-                responseDistributionChart.data.datasets[0].data = distData.map(d => d.count);
-                responseDistributionChart.update();
+            // Response Distribution
+            const distData = await safe(`/api/analytics/response-distribution?${base}${uf}`);
+            responseDistributionChart.data.labels = distData.map(d => d.bucket);
+            responseDistributionChart.data.datasets[0].data = distData.map(d => d.count);
+            responseDistributionChart.update();
 
-                // Peak Hours (request count per hour)
-                const peakData = await fetch(`/api/analytics/peak-hours?${base}${uf}`).then(r => r.json());
-                peakHoursChart.data.labels = peakData.map(d => d.hour);
-                peakHoursChart.data.datasets[0].data = peakData.map(d => d.count);
-                peakHoursChart.update();
+            // Peak Hours (request count per hour)
+            const peakData = await safe(`/api/analytics/peak-hours?${base}${uf}`);
+            peakHoursChart.data.labels = peakData.map(d => d.hour);
+            peakHoursChart.data.datasets[0].data = peakData.map(d => d.count);
+            peakHoursChart.update();
 
-                // Slowest Projects
-                const projectsData = await fetch(`/api/analytics/project-rankings?from_date=${fromDate}&to_date=${toDate}${uf}`).then(r => r.json());
-                slowestProjectsChart.data.labels = projectsData.map(d => d.project).slice(0, 10);
-                slowestProjectsChart.data.datasets[0].data = projectsData.map(d => d.avg_time).slice(0, 10);
-                slowestProjectsChart.update();
+            // Slowest Projects
+            const projectsData = await safe(`/api/analytics/project-rankings?from_date=${fromDate}&to_date=${toDate}${uf}`);
+            slowestProjectsChart.data.labels = projectsData.map(d => d.project).slice(0, 10);
+            slowestProjectsChart.data.datasets[0].data = projectsData.map(d => d.avg_time).slice(0, 10);
+            slowestProjectsChart.update();
 
-                // Layer Rankings
-                const layerData = await fetch(`/api/analytics/layer-rankings?${base}${uf}`).then(r => r.json());
-                layerRankingsChart.data.labels = layerData.map(d => d.layer);
-                layerRankingsChart.data.datasets[0].data = layerData.map(d => d.avg_time);
-                layerRankingsChart.data.datasets[1].data = layerData.map(d => d.max_time);
-                layerRankingsChart._countData = layerData.map(d => d.count);
-                layerRankingsChart.update();
+            // Layer Rankings
+            const layerData = await safe(`/api/analytics/layer-rankings?${base}${uf}`);
+            layerRankingsChart.data.labels = layerData.map(d => d.layer);
+            layerRankingsChart.data.datasets[0].data = layerData.map(d => d.avg_time);
+            layerRankingsChart.data.datasets[1].data = layerData.map(d => d.max_time);
+            layerRankingsChart._countData = layerData.map(d => d.count);
+            layerRankingsChart.update();
 
-                // Pool Comparison
-                const poolData = await fetch(`/api/analytics/pool-comparison?${base}${uf}`).then(r => r.json());
-                poolComparisonChart.data.labels = poolData.map(d => d.pool);
-                poolComparisonChart.data.datasets[0].data = poolData.map(d => d.avg_time);
-                poolComparisonChart.update();
+            // Pool Comparison
+            const poolData = await safe(`/api/analytics/pool-comparison?${base}${uf}`);
+            poolComparisonChart.data.labels = poolData.map(d => d.pool);
+            poolComparisonChart.data.datasets[0].data = poolData.map(d => d.avg_time);
+            poolComparisonChart.update();
 
-                // Volume vs Performance
-                const volumeData = await fetch(`/api/analytics/volume-performance?${base}&aggregation=${aggregation}${uf}`).then(r => r.json());
-                volumePerformanceChart.data.datasets[0].data = volumeData.map(d => ({x: d.volume, y: d.avg_time}));
-                volumePerformanceChart.update();
+            // Volume vs Performance
+            const volumeData = await safe(`/api/analytics/volume-performance?${base}&aggregation=${aggregation}${uf}`);
+            volumePerformanceChart.data.datasets[0].data = volumeData.map(d => ({x: d.volume, y: d.avg_time}));
+            volumePerformanceChart.update();
 
-                // Day of Week (request count per weekday)
-                const dayData = await fetch(`/api/analytics/day-of-week?${base}${uf}`).then(r => r.json());
-                const dayNames = t('day_names');
-                dayOfWeekChart.data.labels = dayData.map(d => dayNames[d.day_num] || d.day_num);
-                dayOfWeekChart.data.datasets[0].data = dayData.map(d => d.count);
-                dayOfWeekChart.update();
-
-                // Ausreißer
-                const threshold = document.getElementById('ausreisser-threshold').value || 5000;
-                const ausreisserData = await fetch(`/api/analytics/ausreisser?${base}&threshold=${threshold}${uf}`).then(r => r.json());
-                const tbody = document.getElementById('ausreisserBody');
-                if (ausreisserData.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="5" class="no-data">Keine Requests über ${threshold} ms im Zeitraum</td></tr>`;
-                } else {
-                    tbody.innerHTML = ausreisserData.map(r => `
-                        <tr>
-                            <td>${new Date(r.timestamp).toLocaleString('de-DE')}</td>
-                            <td>${r.project}</td>
-                            <td>${r.user || 'Unknown'}</td>
-                            <td class="response-critical">${r.response_time_ms}</td>
-                            <td title="${r.layers}">${r.layers}</td>
-                        </tr>`).join('');
-                }
-
-            } catch (error) {
-                console.error('Error loading analytics:', error);
-                alert(t('alert_analytics_error'));
-            }
+            // Day of Week (request count per weekday)
+            const dayData = await safe(`/api/analytics/day-of-week?${base}${uf}`);
+            const dayNames = t('day_names');
+            dayOfWeekChart.data.labels = dayData.map(d => dayNames[d.day_num] || d.day_num);
+            dayOfWeekChart.data.datasets[0].data = dayData.map(d => d.count);
+            dayOfWeekChart.update();
         }
 
         // Initialize Analytics date pickers with default values
@@ -2971,7 +2884,7 @@
             'GETMAP':         'Karte',
             'GETFEATUREINFO': 'Sachdaten',
             'GETPRINT':       'Drucken',
-            'GETFEATURE':     'Export',
+            'GETFEATURE':     'Datenexport',
             'WFS-T':          'Editieren'
         };
 
