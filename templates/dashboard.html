@@ -3039,9 +3039,8 @@
                 const badge   = usageTypeBadge(r.request_type, r.action);
                 const ms      = r.response_time_ms != null ? r.response_time_ms + 'ms' : '–';
                 const msClass = r.response_time_ms > 2000 ? 'response-critical' : r.response_time_ms > 1000 ? 'response-slow' : '';
-                const isPrint = r.request_type === 'GETPRINT';
-                const layout  = isPrint ? (r.layers || '–') : '–';
-                const layers  = isPrint ? '–' : (r.layers || '–');
+                const layout  = r.template || '–';
+                const layers  = (r.layers || '–');
                 const layersShort = layers.length > 40 ? layers.substring(0, 40) + '…' : layers;
                 return `<tr>
                     <td style="white-space:nowrap;">${ts}</td>

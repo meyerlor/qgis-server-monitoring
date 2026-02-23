@@ -191,12 +191,19 @@ def init_database():
             project TEXT,
             user TEXT,
             layers TEXT,
+            template TEXT,
             request_type TEXT NOT NULL,
             action TEXT,
             response_time_ms INTEGER,
             request_id TEXT
         )
     ''')
+    # Migration: add template column if it doesn't exist yet
+    try:
+        cursor.execute('ALTER TABLE usage_log ADD COLUMN template TEXT')
+        conn.commit()
+    except Exception:
+        pass  # column already exists
 
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_log(timestamp)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_pool ON usage_log(pool)')
@@ -228,15 +235,15 @@ def save_request_to_db(pool, project, user, layers, request_type, response_time_
         import traceback
         traceback.print_exc()
 
-def save_usage_log_to_db(pool, project, user, layers, request_type, action, response_time_ms, request_id):
+def save_usage_log_to_db(pool, project, user, layers, request_type, action, response_time_ms, request_id, template=None):
     """Save a usage log entry (any request type) to usage_log table"""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO usage_log (timestamp, pool, project, user, layers, request_type, action, response_time_ms, request_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (datetime.now(), pool, project, user, layers, request_type, action, response_time_ms, request_id))
+            INSERT INTO usage_log (timestamp, pool, project, user, layers, template, request_type, action, response_time_ms, request_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (datetime.now(), pool, project, user, layers, template, request_type, action, response_time_ms, request_id))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -530,16 +537,17 @@ def parse_qgis_log_line(line, log_name):
                             response_time, request_id
                         )
                     elif request_type.upper() in ('GETPRINT', 'GETPRINTATLAS'):
-                        template = details.get('template') or details.get('layers', 'Unknown')
-                        debug_log(f"DEBUG [{log_name}] ✓ SAVING to UsageLog ({request_type.upper()}): {details.get('map')} template={template}")
+                        tmpl = details.get('template')
+                        debug_log(f"DEBUG [{log_name}] ✓ SAVING to UsageLog ({request_type.upper()}): {details.get('map')} template={tmpl}")
                         socketio.start_background_task(
                             save_usage_log_to_db,
                             log_name,
                             details.get('map', 'Unknown'),
                             details.get('user', 'Unknown'),
-                            template,
+                            details.get('layers'),
                             'GETPRINT', None,
-                            response_time, request_id
+                            response_time, request_id,
+                            tmpl
                         )
                     elif request_type.upper() in ('GETFEATUREINFO', 'GETFEATURE'):
                         # Only in usage_log (not tracked for perf stats)
@@ -1758,7 +1766,7 @@ def get_usage_log():
 
         params = [cutoff]
         query = f'''
-            SELECT id, timestamp, pool, project, user, layers, request_type, action, response_time_ms, request_id
+            SELECT id, timestamp, pool, project, user, layers, template, request_type, action, response_time_ms, request_id
             FROM usage_log
             WHERE timestamp >= ?
             AND request_type NOT IN ('GETMAP', 'GETFEATURE')
