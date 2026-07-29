@@ -83,6 +83,21 @@ QGIS_POOLS = {
 PHP_FPM_SERVICE_UNIT = 'php8.3-fpm.service'
 PHP_FPM_LOG_FILE = '/var/log/php8.3-fpm.log'
 
+# -- Nginx / Lizmap Web Edits ------------------------------------------------
+# Path to the nginx access log. Lizmap web edits (create/update/delete) are
+# performed by the PHP edition controller writing directly to the database,
+# so they never reach the QGIS Server logs. The only reliable signal is the
+# POST to the edition endpoints in the web-server access log. Set to None to
+# disable nginx-based edit tracking.
+NGINX_ACCESS_LOG = '/var/log/nginx/access.log'
+
+# The access log has no username; it is correlated with the most recently seen
+# LIZMAP_USER in the QGIS Server log for the same project/layer. This is the
+# maximum age (in seconds) of that last-seen user before we fall back to
+# 'Unknown'. Larger = more edits get a name but higher risk of mis-attribution
+# when several users edit the same project concurrently.
+EDIT_USER_CORRELATION_WINDOW = 90
+
 # -- In-Memory Buffer Sizes -------------------------------------------------
 # Maximum number of response-time entries kept in memory per pool
 RESPONSE_TIMES_MAXLEN = 10000
@@ -309,9 +324,16 @@ response_times = {pool: deque(maxlen=RESPONSE_TIMES_MAXLEN) for pool in POOL_NAM
 # Request details tracking - stores info about ongoing requests by request_id
 current_requests = {pool: {} for pool in POOL_NAMES}
 
-# Deduplication for Lizmap EXPRESSION/Evaluate (edit form open) events
-# key: (pool, user, layer) → last log timestamp; prevents logging 3 entries per form open
-_last_expression_log: dict = {}
+# --- Nginx edit correlation state ------------------------------------------
+# Last LIZMAP_USER seen in the QGIS Server log, keyed for correlation with
+# nginx edits (which carry no username). Value: (user, unix_ts).
+_last_user_by_project: dict = {}          # key: project            -> (user, ts)
+_last_user_by_project_layer: dict = {}    # key: (project, layerId) -> (user, ts)
+
+# Edit forms opened per client IP, so a later saveFeature POST (whose URL has
+# no project/layer) can recover them. key: client_ip -> dict(action, project,
+# repository, layer, ts)
+_pending_edit_by_ip: dict = {}
 
 # Slowest requests in last N minutes
 slowest_requests = {pool: [] for pool in POOL_NAMES}
@@ -496,11 +518,6 @@ def parse_qgis_log_line(line, log_name):
                 current_requests[log_name][tracking_key]['template'] = template
                 debug_log(f"DEBUG [{log_name}] [{tracking_key}] Set TEMPLATE: {template}")
 
-        elif 'SERVICE:' in line and 'Qgis: Server: SERVICE:' in line:
-            service_match = re.search(r'SERVICE:([^\s]+)', line)
-            if service_match:
-                current_requests[log_name][tracking_key]['service'] = service_match.group(1).upper()
-
         elif 'REQUEST:' in line:
             request_match = re.search(r'REQUEST:([^\s]+)', line)
             if request_match:
@@ -531,7 +548,19 @@ def parse_qgis_log_line(line, log_name):
                     
                     debug_log(f"DEBUG [{log_name}] Using key: {tracking_key}")
                     debug_log(f"DEBUG [{log_name}] Details: MAP={details.get('map')}, USER={details.get('user')}, TYPE={details.get('request_type')}")
-                    
+
+                    # Remember the last real user active on this project/layer so
+                    # nginx edits (which have no username) can be attributed. Every
+                    # authenticated QGIS request (GETMAP, GETFEATUREINFO, …) carries
+                    # LIZMAP_USER + MAP, keeping this fresh.
+                    _proj = details.get('map')
+                    _usr = details.get('user')
+                    if _proj and _usr and _usr != 'Unknown':
+                        _last_user_by_project[_proj] = (_usr, now)
+                        _lyr = details.get('layers')
+                        if _lyr:
+                            _last_user_by_project_layer[(_proj, _lyr)] = (_usr, now)
+
                     # Only save GETMAP requests to database (not GetLegendGraphic, GetCapabilities, etc.)
                     request_type = details.get('request_type', '')
                     
@@ -596,24 +625,6 @@ def parse_qgis_log_line(line, log_name):
                             'WFS-T', 'SAVE',
                             response_time, request_id
                         )
-                    elif request_type.upper() == 'EVALUATE' and details.get('service') == 'EXPRESSION':
-                        # Lizmap edit form opened — deduplicate: skip if same user+layer logged within 30s
-                        dedup_key = (log_name, details.get('user', ''), details.get('layers', ''))
-                        last_ts = _last_expression_log.get(dedup_key, 0)
-                        if now - last_ts > 30:
-                            _last_expression_log[dedup_key] = now
-                            debug_log(f"DEBUG [{log_name}] ✓ SAVING to UsageLog (Lizmap edit form): {details.get('map')} layer={details.get('layers')}")
-                            socketio.start_background_task(
-                                save_usage_log_to_db,
-                                log_name,
-                                details.get('map', 'Unknown'),
-                                details.get('user', 'Unknown'),
-                                details.get('layers', 'Unknown'),
-                                'WFS-T', 'EDIT_FORM',
-                                response_time, request_id
-                            )
-                        else:
-                            debug_log(f"DEBUG [{log_name}] ✗ DEDUP skip (Lizmap edit form within 30s): {dedup_key}")
                     else:
                         debug_log(f"DEBUG [{log_name}] ✗ SKIPPING (not tracked): {request_type.upper()}")
                     
@@ -696,6 +707,128 @@ def parse_php_log_line(line, log_name):
             'level': 'ERROR',
             'message': line.strip()[:200]
         })
+
+# Nginx "combined" log line:
+#   IP - user [ts] "METHOD path HTTP/x" status bytes "referer" "ua"
+_NGINX_RE = re.compile(
+    r'^(?P<ip>\S+)\s+\S+\s+\S+\s+\[[^\]]+\]\s+'
+    r'"(?P<method>\S+)\s+(?P<path>\S+)\s+[^"]*"\s+'
+    r'(?P<status>\d+)\s+\S+\s+"(?P<referer>[^"]*)"'
+)
+
+def _qs_get(url, key):
+    """Extract a single query-string parameter value from a URL (case-insensitive key)."""
+    m = re.search(r'[?&]' + re.escape(key) + r'=([^&\s]+)', url, re.IGNORECASE)
+    return unquote(m.group(1)) if m else None
+
+def _correlate_edit_user(project, layer, now):
+    """Best-effort username for an nginx edit: most recently active LIZMAP_USER
+    on the same project (preferring an exact project+layer match) within the
+    correlation window. Falls back to 'Unknown'."""
+    if project and layer:
+        hit = _last_user_by_project_layer.get((project, layer))
+        if hit and now - hit[1] <= EDIT_USER_CORRELATION_WINDOW:
+            return hit[0]
+    if project:
+        hit = _last_user_by_project.get(project)
+        if hit and now - hit[1] <= EDIT_USER_CORRELATION_WINDOW:
+            return hit[0]
+    return 'Unknown'
+
+def parse_nginx_log_line(line, log_name='nginx'):
+    """Parse an nginx access-log line for Lizmap web edits.
+
+    Lizmap edits go browser -> PHP edition controller -> direct DB write, so
+    they never appear in the QGIS Server logs. The ground-truth signal is the
+    POST to /lizmap/edition/saveFeature (and the deleteFeature request). The
+    save POST carries no project/layer in its URL, so we recover them from the
+    preceding create/editFeature GET by the same client IP, and the username by
+    correlation with the QGIS Server log (see _correlate_edit_user)."""
+    m = _NGINX_RE.match(line)
+    if not m:
+        return
+    path = m.group('path')
+    if '/lizmap/edition/' not in path.lower():
+        return
+
+    now = time.time()
+    ip = m.group('ip')
+    method = m.group('method').upper()
+    status = m.group('status')
+    referer = m.group('referer') or ''
+    low = path.lower()
+
+    # createFeature is issued only for a NEW feature. Stash it as an INSERT so the
+    # later saveFeature POST (which has no project/layer in its URL) can recover
+    # the context. (INSERT/UPDATE/DELETE reuse the existing WFS-T edit vocabulary
+    # so these edits render in the dashboard's editing views unchanged.)
+    if 'edition/createfeature' in low:
+        _pending_edit_by_ip[ip] = {
+            'action': 'INSERT',
+            'project': _qs_get(path, 'project') or _qs_get(referer, 'project'),
+            'repository': _qs_get(path, 'repository') or _qs_get(referer, 'repository'),
+            'layer': _qs_get(path, 'layerId'),
+            'ts': now,
+        }
+        return
+
+    # editFeature renders the form for BOTH new and existing features. If a
+    # createFeature was just seen for this IP it is still that INSERT (only
+    # refresh it); otherwise it is an edit of an existing feature (UPDATE).
+    if 'edition/editfeature' in low:
+        prev = _pending_edit_by_ip.get(ip)
+        project = _qs_get(path, 'project') or _qs_get(referer, 'project')
+        layer = _qs_get(path, 'layerId')
+        if (prev and prev.get('action') == 'INSERT'
+                and now - prev['ts'] <= REQUEST_TRACKING_TIMEOUT):
+            prev['ts'] = now
+            prev['project'] = prev.get('project') or project
+            prev['layer'] = prev.get('layer') or layer
+        else:
+            _pending_edit_by_ip[ip] = {
+                'action': 'UPDATE',
+                'project': project,
+                'repository': _qs_get(path, 'repository') or _qs_get(referer, 'repository'),
+                'layer': layer,
+                'ts': now,
+            }
+        return
+
+    # Actual save. 303 = success (redirect); a re-rendered form on validation
+    # error returns 200, so we only count 303 as a committed edit.
+    if 'edition/savefeature' in low and method == 'POST' and status == '303':
+        pending = _pending_edit_by_ip.get(ip)
+        # Ignore a stale pending entry (older than the abandoned-request timeout)
+        if pending and now - pending['ts'] > REQUEST_TRACKING_TIMEOUT:
+            pending = None
+        project = (pending or {}).get('project') or _qs_get(referer, 'project')
+        repository = (pending or {}).get('repository') or _qs_get(referer, 'repository')
+        layer = (pending or {}).get('layer')
+        action = (pending or {}).get('action', 'SAVE')
+        user = _correlate_edit_user(project, layer, now)
+        debug_log(f"DEBUG [nginx] ✓ EDIT {action}: project={project} layer={layer} user={user}")
+        socketio.start_background_task(
+            save_usage_log_to_db,
+            repository or 'nginx', project or 'Unknown', user,
+            layer, 'WFS-T', action, None, None
+        )
+        _pending_edit_by_ip.pop(ip, None)
+        return
+
+    # Delete: no form is opened, so createFeature/editFeature never fires and the
+    # QGIS-log heuristic misses it entirely. The request carries its own params.
+    if 'edition/deletefeature' in low and status in ('200', '303'):
+        project = _qs_get(path, 'project') or _qs_get(referer, 'project')
+        repository = _qs_get(path, 'repository') or _qs_get(referer, 'repository')
+        layer = _qs_get(path, 'layerId')
+        user = _correlate_edit_user(project, layer, now)
+        debug_log(f"DEBUG [nginx] ✓ EDIT DELETE: project={project} layer={layer} user={user}")
+        socketio.start_background_task(
+            save_usage_log_to_db,
+            repository or 'nginx', project or 'Unknown', user,
+            layer, 'WFS-T', 'DELETE', None, None
+        )
+        return
 
 def calculate_response_stats(log_name, seconds_ago):
     """Calculate average response time for a given time window"""
@@ -975,7 +1108,21 @@ def log_monitoring_thread():
             'php-fpm', LOG_FILES_FALLBACK['php-fpm'], parse_php_log_line
         )
         greenlets.append(g)
-    
+
+    # Nginx access log - captures Lizmap web edits (create/update/delete) that
+    # never reach the QGIS Server logs.
+    if NGINX_ACCESS_LOG and os.path.exists(NGINX_ACCESS_LOG):
+        debug_log(f"Starting file tail for nginx: {NGINX_ACCESS_LOG}")
+        print(f"Starting file tail for nginx: {NGINX_ACCESS_LOG}")
+        g = socketio.start_background_task(
+            tail_log_file_fallback,
+            'nginx', NGINX_ACCESS_LOG, parse_nginx_log_line
+        )
+        greenlets.append(g)
+    elif NGINX_ACCESS_LOG:
+        debug_log(f"WARNING: Nginx access log not found: {NGINX_ACCESS_LOG}")
+        print(f"Warning: Nginx access log not found: {NGINX_ACCESS_LOG}")
+
     debug_log(f"Started {len(greenlets)} log monitoring greenlets")
     debug_log("LOG MONITORING ACTIVE - Watching for new log entries...")
     print(f"Started {len(greenlets)} log monitoring greenlets using file tailing")
