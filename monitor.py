@@ -28,6 +28,15 @@ import sqlite3
 import json
 import sys
 
+# Ensure operational logs (print) reach the systemd journal in real time.
+# Without this, Python block-buffers stdout when stdout is not a TTY, so startup
+# and status lines only surface when the buffer fills (or never).
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
 # =============================================================================
 # CONFIGURATION - Adjust these variables to match your environment
 # =============================================================================
@@ -52,8 +61,12 @@ REQUEST_RETENTION_DAYS = 180
 SYSTEM_METRICS_RETENTION_DAYS = 30
 
 # -- Debug Logging -----------------------------------------------------------
-# Path to the debug log file (set to None to disable debug logging)
-DEBUG_LOG = '/var/log/monitoring-debug.log'
+# Path to the debug log file, or None to disable.
+# WARNING: when enabled this writes one line per parsed log line — very high
+# volume (multiple GB/day) and unrotated. Keep it None in production; set a path
+# only for short, supervised debugging sessions. Operational status (startup,
+# log-tail start, rotations, errors) always goes to stdout -> the journal.
+DEBUG_LOG = None
 
 # -- QGIS Server Pools ------------------------------------------------------
 # Define your QGIS server pools here.  Each pool needs:
@@ -2093,28 +2106,35 @@ def get_usage_projects():
         return jsonify([]), 500
 
 
-@socketio.on('connect', namespace='/monitoring')
-def handle_connect():
-    """Handle client connection"""
+def start_background_workers():
+    """Start the metrics, log-tailing and cleanup background tasks exactly once.
+
+    Idempotent: the *_active guards make repeat calls no-ops. Called at process
+    startup so capture runs continuously from boot — a browser connecting is NOT
+    required. (Previously these only started on the first websocket connect, so
+    after any restart the tool captured nothing until someone opened the
+    dashboard, silently losing every request in between.)"""
     global monitoring_active, log_monitoring_active, cleanup_active
-    
-    print(f"Client connected: {datetime.now()}")
-    
-    # Start monitoring thread if not already running
     if not monitoring_active:
         monitoring_active = True
         socketio.start_background_task(monitoring_thread)
-    
-    # Start log monitoring if not already running
     if not log_monitoring_active:
         log_monitoring_active = True
         socketio.start_background_task(log_monitoring_thread)
-    
-    # Start cleanup thread if not already running
     if not cleanup_active:
         cleanup_active = True
         socketio.start_background_task(cleanup_thread)
-    
+
+
+@socketio.on('connect', namespace='/monitoring')
+def handle_connect():
+    """Handle client connection"""
+    print(f"Client connected: {datetime.now()}")
+
+    # Safety net: normally the workers are already running (started at boot), but
+    # this covers any path where the app is served without reaching __main__.
+    start_background_workers()
+
     # Send initial data immediately
     metrics = get_system_metrics()
     processes = get_process_info()
@@ -2181,5 +2201,10 @@ if __name__ == '__main__':
     print(f"Database: {DB_PATH}")
     print("Press Ctrl+C to stop")
     print("=" * 60)
+
+    # Start capture at boot so logging runs continuously, independent of whether
+    # a browser is viewing the dashboard.
+    start_background_workers()
+    print("Background capture workers started at boot (metrics, log tailing, cleanup)")
 
     socketio.run(app, host=HOST, port=PORT, debug=False)
