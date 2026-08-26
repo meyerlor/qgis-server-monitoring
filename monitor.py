@@ -60,6 +60,15 @@ REQUEST_RETENTION_DAYS = 180
 # How long to keep system metrics in the database (in days)
 SYSTEM_METRICS_RETENTION_DAYS = 30
 
+# -- Usage Log Paging --------------------------------------------------------
+# The Nutzungsprotokoll detail table is rendered in the browser, so one API
+# response only carries this many rows; the dashboard pages backwards through
+# the selected time range on demand. Raise it for a faster-but-heavier table.
+USAGE_LOG_PAGE_SIZE = 2000
+
+# Hard ceiling for a client-supplied ?limit= on /api/usage/log
+USAGE_LOG_MAX_PAGE_SIZE = 20000
+
 # -- Debug Logging -----------------------------------------------------------
 # Path to the debug log file, or None to disable.
 # WARNING: when enabled this writes one line per parsed log line — very high
@@ -1263,6 +1272,13 @@ def cleanup_thread():
             print(f"Error in cleanup thread: {e}")
             socketio.sleep(3600)  # Wait 1 hour on error
 
+def clamp_int(value, default, minimum, maximum):
+    """Parse an int query param, falling back to default and clamping to range."""
+    try:
+        return max(minimum, min(int(value), maximum))
+    except (TypeError, ValueError):
+        return default
+
 def build_user_filter():
     """Build SQL filter clause based on include_admin / include_anonymous query params."""
     include_admin = request.args.get('include_admin', '0') == '1'
@@ -1956,13 +1972,26 @@ def get_ausreisser():
 
 @app.route('/api/usage/log')
 def get_usage_log():
-    """Nutzungsprotokoll: filtered entries from usage_log"""
+    """Nutzungsprotokoll: filtered entries from usage_log, paginated.
+
+    Returns {'entries': [...], 'total': n, 'offset': n, 'limit': n, 'has_more': bool}.
+
+    The detail table is rendered client-side, so one response is capped at
+    ``limit`` rows and the dashboard pages backwards through the selected time
+    range with ``offset``. Without paging, a busy server logs more rows per day
+    than a single response can carry, so the table silently stopped a few hours
+    back no matter which time range was selected.
+    """
     try:
         days = int(request.args.get('days', 7))
         req_type = request.args.get('request_type', 'all')
+        # Type checkboxes of the detail log, as CSV. Empty = no restriction.
+        types = [t.strip() for t in request.args.get('types', '').split(',') if t.strip()]
         user = request.args.get('user', 'all')
         project = request.args.get('project', 'all')
         pool = request.args.get('pool', 'all')
+        limit = clamp_int(request.args.get('limit'), USAGE_LOG_PAGE_SIZE, 1, USAGE_LOG_MAX_PAGE_SIZE)
+        offset = clamp_int(request.args.get('offset'), 0, 0, 10000000)
         user_filter = build_user_filter()
 
         conn = sqlite3.connect(DB_PATH)
@@ -1974,30 +2003,38 @@ def get_usage_log():
         else:
             cutoff = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
 
+        clauses = ['timestamp >= ?', "request_type NOT IN ('GETMAP', 'GETFEATURE')"]
         params = [cutoff]
-        query = f'''
-            SELECT id, timestamp, pool, project, user, layers, template, request_type, action, response_time_ms, request_id
-            FROM usage_log
-            WHERE timestamp >= ?
-            AND request_type NOT IN ('GETMAP', 'GETFEATURE')
-            {user_filter}
-        '''
 
         if req_type != 'all':
-            query += ' AND request_type = ?'
+            clauses.append('request_type = ?')
             params.append(req_type)
+        if types:
+            placeholders = ','.join('?' * len(types))
+            clauses.append(f'request_type IN ({placeholders})')
+            params.extend(types)
         if user != 'all':
-            query += ' AND user = ?'
+            clauses.append('user = ?')
             params.append(user)
         if project != 'all':
-            query += ' AND project = ?'
+            clauses.append('project = ?')
             params.append(project)
         if pool != 'all':
-            query += ' AND pool = ?'
+            clauses.append('pool = ?')
             params.append(pool)
 
-        query += ' ORDER BY timestamp DESC LIMIT 2000'
-        cursor.execute(query, params)
+        where = 'WHERE ' + ' AND '.join(clauses) + user_filter
+
+        cursor.execute(f'SELECT COUNT(*) FROM usage_log {where}', params)
+        total = cursor.fetchone()[0]
+
+        cursor.execute(f'''
+            SELECT id, timestamp, pool, project, user, layers, template, request_type, action, response_time_ms, request_id
+            FROM usage_log
+            {where}
+            ORDER BY timestamp DESC
+            LIMIT ? OFFSET ?
+        ''', params + [limit, offset])
         rows = cursor.fetchall()
         conn.close()
 
@@ -2014,10 +2051,16 @@ def get_usage_log():
             'response_time_ms': row['response_time_ms'],
             'request_id':      row['request_id'] or ''
         } for row in rows]
-        return jsonify(result)
+        return jsonify({
+            'entries':  result,
+            'total':    total,
+            'offset':   offset,
+            'limit':    limit,
+            'has_more': offset + len(result) < total,
+        })
     except Exception as e:
         print(f"Error fetching usage log: {e}")
-        return jsonify([]), 500
+        return jsonify({'entries': [], 'total': 0, 'offset': 0, 'limit': 0, 'has_more': False}), 500
 
 
 @app.route('/api/usage/summary')

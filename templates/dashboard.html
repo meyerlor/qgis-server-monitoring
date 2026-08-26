@@ -946,13 +946,13 @@
                 </div>
                 <div class="filter-group" style="display: flex; align-items: center; gap: 8px;">
                     <label style="color: #94a3b8; font-size: 0.85em; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                        <input type="checkbox" id="usage-include-admin">
+                        <input type="checkbox" id="usage-include-admin" onchange="loadUsage()">
                         <span data-i18n="include_admin">Admin einbeziehen</span>
                     </label>
                 </div>
                 <div class="filter-group" style="display: flex; align-items: center; gap: 8px;">
                     <label style="color: #94a3b8; font-size: 0.85em; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                        <input type="checkbox" id="usage-include-anonymous">
+                        <input type="checkbox" id="usage-include-anonymous" onchange="loadUsage()">
                         <span data-i18n="include_anonymous">Anonyme einbeziehen</span>
                     </label>
                 </div>
@@ -982,17 +982,17 @@
                         </label>
                         <span style="color:#334155;">|</span>
                         <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
-                            <input type="checkbox" id="cb-GETFEATUREINFO" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
+                            <input type="checkbox" id="cb-GETFEATUREINFO" checked onchange="syncAlleCheckbox(); loadUsageLog()"
                                    style="accent-color:#22c55e; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
                             <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#22c55e;color:#fff;font-size:0.8em;font-weight:600;" data-i18n="type_getfeatureinfo">Sachdaten</span>
                         </label>
                         <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
-                            <input type="checkbox" id="cb-GETPRINT" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
+                            <input type="checkbox" id="cb-GETPRINT" checked onchange="syncAlleCheckbox(); loadUsageLog()"
                                    style="accent-color:#f59e0b; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
                             <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#f59e0b;color:#fff;font-size:0.8em;font-weight:600;" data-i18n="type_getprint">Drucken</span>
                         </label>
                         <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none;">
-                            <input type="checkbox" id="cb-WFS-T" checked onchange="syncAlleCheckbox(); renderUsageLogTable()"
+                            <input type="checkbox" id="cb-WFS-T" checked onchange="syncAlleCheckbox(); loadUsageLog()"
                                    style="accent-color:#ef4444; width:13px; height:13px; margin:0; cursor:pointer; flex-shrink:0;">
                             <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#ef4444;color:#fff;font-size:0.8em;font-weight:600;" data-i18n="type_wfst">Editieren</span>
                         </label>
@@ -1016,6 +1016,9 @@
                             <tr><td colspan="8" class="loading" data-i18n="loading">Lade Daten...</td></tr>
                         </tbody>
                     </table>
+                </div>
+                <div id="usage-log-more" style="display:none; text-align:center; margin-top:14px;">
+                    <button class="timeframe-btn" id="usage-load-more-btn" onclick="loadMoreUsageLog()"></button>
                 </div>
             </div>
         </div>
@@ -1168,6 +1171,13 @@
                 filter_getfeatureinfo: 'Sachdatenabfrage (GetFeatureInfo)',
                 filter_getprint: 'Drucken (GetPrint)',
                 filter_wfst: 'Editieren',
+                entries: 'Einträge',
+                entries_of: 'von',
+                entries_dative: 'Einträgen',
+                load_more: 'Weitere laden',
+                load_more_n: 'Weitere {n} laden',
+                loading_more: 'Lade …',
+                no_usage_data: 'Keine Daten für diesen Zeitraum/Filter',
             },
             en: {
                 // Tabs
@@ -1310,6 +1320,13 @@
                 filter_getfeatureinfo: 'Feature Info (GetFeatureInfo)',
                 filter_getprint: 'Print (GetPrint)',
                 filter_wfst: 'Editing',
+                entries: 'entries',
+                entries_of: 'of',
+                entries_dative: 'entries',
+                load_more: 'Load more',
+                load_more_n: 'Load {n} more',
+                loading_more: 'Loading …',
+                no_usage_data: 'No data for this time range/filter',
             }
         };
 
@@ -1352,6 +1369,8 @@
             localStorage.setItem('dashboard_lang', lang);
             applyTranslations();
             updateChartLabels();
+            // Usage log labels are rendered by JS, not by data-i18n attributes.
+            if (usageTabInitialized) renderUsageLogTable();
         }
 
         let hideUsernames = localStorage.getItem('dashboard_hide_names') === 'true';
@@ -2947,10 +2966,22 @@
             return map[type] || type;
         }
 
+        // The detail table is rendered in the browser, so it is loaded in pages:
+        // usageLogData holds every row fetched so far, usageLogTotal how many rows
+        // the selected time range and filters actually match on the server.
+        const USAGE_LOG_PAGE_SIZE = 2000;
         let usageLogData         = [];
+        let usageLogTotal        = 0;
+        let usageLogHasMore      = false;
+        let usageLogLoading      = false;
         let usageSortCol         = 'timestamp';
         let usageSortOrder       = 'desc';
         let usageTabInitialized  = false;
+
+        function activeUsageTypes() {
+            return ['GETFEATUREINFO', 'GETPRINT', 'WFS-T']
+                .filter(tp => { const cb = document.getElementById('cb-' + tp); return cb ? cb.checked : true; });
+        }
 
         function usageUserParams() {
             const ia  = document.getElementById('usage-include-admin')?.checked ? '1' : '0';
@@ -3048,21 +3079,65 @@
             } catch(e) { console.error('loadUsageSummary error:', e); }
         }
 
-        async function loadUsageLog() {
+        function loadUsageLog() {
+            return fetchUsageLogPage(true);
+        }
+
+        function loadMoreUsageLog() {
+            return fetchUsageLogPage(false);
+        }
+
+        // Fetch one page of the detail log. reset=true starts over at offset 0,
+        // reset=false appends the next page, so the table can reach the far end of
+        // a long time range instead of stopping after the first page.
+        async function fetchUsageLogPage(reset) {
+            if (usageLogLoading) return;
             const days    = document.getElementById('usage-days').value;
             const type    = document.getElementById('usage-type').value;
             const user    = document.getElementById('usage-user').value;
             const project = document.getElementById('usage-project').value;
+            const types   = activeUsageTypes();
             const uf      = usageUserParams();
             const tbody   = document.getElementById('usageLogBody');
+            const moreBtn = document.getElementById('usage-load-more-btn');
+
+            if (reset) {
+                usageLogData    = [];
+                usageLogTotal   = 0;
+                usageLogHasMore = false;
+                tbody.innerHTML = `<tr><td colspan="8" class="loading">${t('loading')}</td></tr>`;
+            }
+            // No type selected at all: nothing to show, and no request to make.
+            if (!types.length) {
+                renderUsageLogTable();
+                return;
+            }
+
+            usageLogLoading = true;
+            if (moreBtn) { moreBtn.disabled = true; moreBtn.textContent = t('loading_more'); }
             try {
-                usageLogData = await fetch(
-                    `/api/usage/log?days=${days}&request_type=${type}&user=${user}&project=${project}${uf}`
-                ).then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`));
+                const params = new URLSearchParams({
+                    days:         days,
+                    request_type: type,
+                    user:         user,
+                    project:      project,
+                    types:        types.join(','),
+                    limit:        USAGE_LOG_PAGE_SIZE,
+                    offset:       usageLogData.length
+                });
+                const data = await fetch(`/api/usage/log?${params}${uf}`)
+                    .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`));
+                const entries   = data.entries || [];
+                usageLogData    = reset ? entries : usageLogData.concat(entries);
+                usageLogTotal   = data.total ?? usageLogData.length;
+                usageLogHasMore = !!data.has_more;
                 renderUsageLogTable();
             } catch(e) {
                 console.error('loadUsageLog error:', e);
-                tbody.innerHTML = `<tr><td colspan="8" class="no-data">${t('error_loading')}: ${e}</td></tr>`;
+                if (reset) tbody.innerHTML = `<tr><td colspan="8" class="no-data">${t('error_loading')}: ${e}</td></tr>`;
+            } finally {
+                usageLogLoading = false;
+                if (moreBtn) moreBtn.disabled = false;
             }
         }
 
@@ -3072,7 +3147,7 @@
                 const cb = document.getElementById('cb-' + tp);
                 if (cb) cb.checked = checked;
             });
-            renderUsageLogTable();
+            loadUsageLog();
         }
 
         function syncAlleCheckbox() {
@@ -3087,8 +3162,9 @@
         function renderUsageLogTable() {
             const tbody   = document.getElementById('usageLogBody');
             const countEl = document.getElementById('usage-log-count');
-            const activeTypes = ['GETFEATUREINFO', 'GETPRINT', 'WFS-T']
-                .filter(tp => { const cb = document.getElementById('cb-' + tp); return cb ? cb.checked : true; });
+            const moreBox = document.getElementById('usage-log-more');
+            const moreBtn = document.getElementById('usage-load-more-btn');
+            const activeTypes = activeUsageTypes();
 
             const sorted = [...usageLogData]
                 .filter(r => activeTypes.includes(r.request_type))
@@ -3099,9 +3175,22 @@
                     return usageSortOrder === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
                 });
 
-            countEl.textContent = `(${sorted.length} Einträge)`;
+            // Show how much of the selected range is loaded, so a partial table is
+            // never mistaken for "there is nothing older".
+            countEl.textContent = usageLogTotal > sorted.length
+                ? `(${sorted.length} ${t('entries_of')} ${usageLogTotal} ${t('entries_dative')})`
+                : `(${sorted.length} ${t('entries')})`;
+
+            if (moreBox && moreBtn) {
+                moreBox.style.display = usageLogHasMore ? 'block' : 'none';
+                const remaining = Math.max(usageLogTotal - usageLogData.length, 0);
+                moreBtn.textContent = remaining
+                    ? t('load_more_n').replace('{n}', Math.min(remaining, USAGE_LOG_PAGE_SIZE))
+                    : t('load_more');
+            }
+
             if (!sorted.length) {
-                tbody.innerHTML = '<tr><td colspan="8" class="no-data">Keine Daten für diesen Zeitraum/Filter</td></tr>';
+                tbody.innerHTML = `<tr><td colspan="8" class="no-data">${t('no_usage_data')}</td></tr>`;
                 return;
             }
 
