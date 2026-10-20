@@ -144,9 +144,10 @@
                 <h2 data-i18n="cache_instances_title">🗂️ Lizmap-Instanzen</h2>
                 <div id="cache-instances-box"></div>
                 <div class="cache-actions" style="margin-top:12px;">
-                    <button class="cache-btn" id="cache-refresh-btn" onclick="cacheRefreshInventory(false)" data-i18n="cache_refresh">Projekte neu einlesen</button>
+                    <button class="cache-btn" id="cache-refresh-btn" onclick="cacheRefreshInventory(false)" data-i18n="cache_refresh" data-i18n-title="cache_refresh_tip">Projekte neu einlesen</button>
                     <button class="cache-btn" id="cache-refresh-full-btn" onclick="cacheRefreshInventory(true)" data-i18n="cache_refresh_full" data-i18n-title="cache_refresh_full_tip">Alle neu analysieren</button>
                 </div>
+                <div class="cache-muted cache-small" id="cache-refresh-hint" style="margin-top:6px;" aria-live="polite"></div>
             </div>
         </div>
 

@@ -125,9 +125,93 @@ try {
     $fakeServer = new \Jelix\FakeServerConf\ApacheMod(\jApp::wwwPath(), '/index.php');
     $fakeServer->setHttpRequest($req->getServerURI());
 
-    if (!class_exists('\Lizmap\CliHelpers\WMTSCache') || !class_exists('lizmapTiler')) {
+    if (!class_exists('\Lizmap\CliHelpers\WMTSCache') || !class_exists('lizmapTiler')
+        || !class_exists('\Lizmap\App\JelixContext')) {
         fail('unsupported Lizmap Web Client version (needs 3.8 or newer)');
     }
+} catch (\Throwable $e) {
+    fail('Lizmap bootstrap failed: '.$e->getMessage());
+}
+
+// ---------------------------------------------------------------------------
+// Seeding identity
+//
+// From the command line nobody is logged in, so Lizmap sends its QGIS Server
+// requests with empty Lizmap_User / Lizmap_User_Groups — and the Lizmap plugin
+// in QGIS Server rejects every project restricted to groups (this also breaks
+// Lizmap's own `wmts:cache:seed` for such projects). This context makes the
+// requests of THIS process come from a technical user that is a member of
+// exactly the groups the project's .cfg grants access to (options.acl) or
+// shows layers to (layers.*.group_visibility). Nothing is changed in Lizmap:
+// no user is created, no right is granted.
+//
+// Tiles therefore look the way an authorised user sees them — Lizmap shares
+// cached tiles between all authorised users anyway. Layers filtered by login
+// and editable layers are never cached: Lizmap itself forces cached=False for
+// them when it loads a project. Projects without groups stay anonymous.
+// ---------------------------------------------------------------------------
+class LizmapCacheSeederContext extends \Lizmap\App\JelixContext
+{
+    const SEEDER_LOGIN = 'lizmap-cache-seeder';
+
+    /** @var string[] groups of the technical user; empty = behave like the normal (anonymous) context */
+    public $seederGroups = array();
+
+    private function seeding()
+    {
+        return !empty($this->seederGroups);
+    }
+
+    public function UserIsConnected()
+    {
+        return $this->seeding() ? true : parent::UserIsConnected();
+    }
+
+    public function getUserSession()
+    {
+        if (!$this->seeding()) {
+            return parent::getUserSession();
+        }
+
+        return (object) array('login' => self::SEEDER_LOGIN, 'email' => '', 'firstname' => '', 'lastname' => '');
+    }
+
+    public function aclUserGroupsId()
+    {
+        return $this->seeding() ? $this->seederGroups : parent::aclUserGroupsId();
+    }
+
+    public function aclUserPublicGroupsId($login = null)
+    {
+        if ($this->seeding() && ($login === null || $login === '')) {
+            return $this->seederGroups;
+        }
+
+        return parent::aclUserPublicGroupsId($login);
+    }
+
+    public function aclCheck($right, $resource = null)
+    {
+        if ($this->seeding()) {
+            if ($right === 'lizmap.repositories.view') {
+                return true;   // read access, needed to render the project at all
+            }
+            if ($right === 'lizmap.tools.loginFilteredLayers.override') {
+                return false;  // never lift "filter by login"
+            }
+        }
+
+        return parent::aclCheck($right, $resource);
+    }
+}
+
+try {
+    // Must be in place before Lizmap creates its services, repositories or
+    // projects: they keep a reference to the context they were built with.
+    $seederContext = new LizmapCacheSeederContext();
+    $rp = new \ReflectionProperty('lizmap', 'appContext');
+    $rp->setAccessible(true);
+    $rp->setValue(null, $seederContext);
 
     $services = \lizmap::getServices();
     $configuredWmsUrl = $services->wmsServerURL;
@@ -191,12 +275,121 @@ function has_webp_cache_fix()
 
 function load_project($repoKey, $projectKey)
 {
+    global $seederContext;
+    // groups first: the project must be loaded as the technical user
+    $seederContext->seederGroups = project_seed_groups($repoKey, $projectKey);
     $project = \lizmap::getProject($repoKey.'~'.$projectKey);
     if (!$project) {
         throw new \Exception('project not found: '.$repoKey.'~'.$projectKey);
     }
 
     return $project;
+}
+
+function as_list($value)
+{
+    if (is_string($value)) {
+        $value = explode(',', $value);
+    }
+    if (!is_array($value)) {
+        return array();
+    }
+
+    return array_values(array_filter(array_map(function ($g) { return trim((string) $g); }, $value), 'strlen'));
+}
+
+/**
+ * Groups the technical seeding user needs for a project, read straight from
+ * its .cfg (before Lizmap loads the project): options.acl + every
+ * layers.*.group_visibility. Empty for public projects.
+ */
+function project_seed_groups($repoKey, $projectKey)
+{
+    $repo = \lizmap::getRepository($repoKey);
+    if (!$repo) {
+        throw new \Exception('unknown repository: '.$repoKey);
+    }
+    $cfg = json_decode((string) @file_get_contents($repo->getPath().$projectKey.'.qgs.cfg'));
+    if (!is_object($cfg)) {
+        return array();
+    }
+    $groups = array();
+    if (isset($cfg->options) && property_exists($cfg->options, 'acl')) {
+        $groups = array_merge($groups, as_list($cfg->options->acl));
+    }
+    if (isset($cfg->layers)) {
+        foreach ($cfg->layers as $layer) {
+            if (is_object($layer) && property_exists($layer, 'group_visibility')) {
+                $groups = array_merge($groups, as_list($layer->group_visibility));
+            }
+        }
+    }
+    // never pretend to be in a user's private group
+    $groups = array_filter(array_unique($groups), function ($g) { return strncmp($g, '__priv_', 7) !== 0; });
+
+    return array_values($groups);
+}
+
+/**
+ * GetCapabilities of a project, sent like Lizmap sends it: same MAP path and
+ * the Lizmap_User / Lizmap_User_Groups of this process. Never cached, no redirects.
+ */
+function qgis_probe($project, $services)
+{
+    global $seederContext;
+    $params = array('MAP' => $project->getRelativeQgisPath(), 'SERVICE' => 'WMS', 'REQUEST' => 'GetCapabilities', 'VERSION' => '1.3.0');
+    if ($seederContext->UserIsConnected()) {
+        $params['Lizmap_User'] = $seederContext->getUserSession()->login;
+        $params['Lizmap_User_Groups'] = implode(', ', $seederContext->aclUserPublicGroupsId());
+    } else {
+        $params['Lizmap_User'] = '';
+        $params['Lizmap_User_Groups'] = '';
+    }
+    $base = $services->wmsServerURL;
+    $sep = strpos($base, '?') === false ? '?' : (substr($base, -1) === '&' ? '' : '&');
+    $ctx = stream_context_create(array('http' => array('timeout' => 20, 'ignore_errors' => true, 'follow_location' => 0)));
+    $t0 = microtime(true);
+    $body = @file_get_contents($base.$sep.http_build_query($params), false, $ctx);
+    $ms = (int) round((microtime(true) - $t0) * 1000);
+    $code = 0;
+    if (isset($http_response_header[0]) && preg_match('#\s(\d{3})(\s|$)#', $http_response_header[0], $m)) {
+        $code = (int) $m[1];
+    }
+    $err = null;
+    if ($body === false) {
+        $last = error_get_last();
+        $err = $last ? $last['message'] : 'request failed';
+    }
+    $exception = null;
+    if (is_string($body) && preg_match('#<ServiceException[^>]*>(.*?)</ServiceException>#si', $body, $m)) {
+        $exception = trim(preg_replace('/\s+/', ' ', strip_tags($m[1])));
+    }
+
+    return array(
+        'wms_url' => $base,
+        'map' => $params['MAP'],
+        'code' => $code,
+        'ms' => $ms,
+        'ok' => $body !== false && $code > 0 && $code < 400 && strpos($body, 'WMS_Capabilities') !== false,
+        'service_exception' => $exception,
+        'snippet' => $body === false ? null : substr(trim(preg_replace('/\s+/', ' ', strip_tags($body))), 0, 200),
+        'request_error' => $err,
+    );
+}
+
+function probe_message($p)
+{
+    if ($p['request_error']) {
+        return 'QGIS Server not reachable at '.$p['wms_url'].': '.$p['request_error'];
+    }
+    if ($p['service_exception']) {
+        return 'QGIS Server answered HTTP '.$p['code'].': '.$p['service_exception'];
+    }
+    if (!$p['ok']) {
+        return 'QGIS Server answered HTTP '.$p['code'].' without capabilities'.($p['snippet'] ? ': '.$p['snippet'] : '');
+    }
+
+    return null;
 }
 
 /** Walk <layer-tree-group> recursively: keeps QGIS order and grouping. */
@@ -348,7 +541,9 @@ try {
             $tileLayers = array();
             $capsError = null;
             if ($tileCaps === null || $tileCaps->tileMatrixSetList === null) {
-                $capsError = 'tile capabilities unavailable (QGIS Server GetCapabilities failed)';
+                // Lizmap only logs the reason; ask QGIS Server ourselves to report it
+                $capsError = probe_message(qgis_probe($project, $services))
+                    ?: 'tile capabilities unavailable (QGIS Server GetCapabilities failed)';
             } else {
                 foreach ($tileCaps->tileMatrixSetList as $tms) {
                     $levels = array();
@@ -402,6 +597,7 @@ try {
                 'cfg_layers' => $cfgLayers,
                 'tile_matrix_sets' => $tmsList,
                 'tile_layers' => $tileLayers,
+                'seed_groups' => $seederContext->seederGroups,
                 'error' => $capsError,
             ));
 
@@ -421,6 +617,12 @@ try {
             if (isset($options['bbox']) && $options['bbox'] !== true) {
                 $bbox = (string) $options['bbox'];
             }
+            // WMTSCache loads the project itself: the identity has to be set before
+            $seederContext->seederGroups = project_seed_groups($repoKey, $projectKey);
+            fwrite(STDOUT, ($seederContext->seederGroups
+                ? 'Seeding as technical user '.LizmapCacheSeederContext::SEEDER_LOGIN.' with groups: '.implode(', ', $seederContext->seederGroups)
+                : 'Seeding anonymously (public project, no groups configured)').PHP_EOL);
+            fflush(STDOUT);
             // One layer per call on purpose: WMTSCache::seed() returns after the
             // first layer when given a list.
             $cache = new \Lizmap\CliHelpers\WMTSCache(function ($line) {
@@ -432,37 +634,15 @@ try {
 
         case 'wmsping':
             // Does the (pool) QGIS Server serve this instance's projects? Same MAP
-            // path Lizmap sends (relative or absolute per relativeWMSPath), no cache.
+            // path and user/groups Lizmap sends, no cache, no redirects.
             if (count($positional) < 2) {
                 fail('usage: wmsping <repo> <project>', EXIT_USAGE);
             }
             $project = load_project($positional[0], $positional[1]);
-            $map = $project->getRelativeQgisPath();
-            $base = $services->wmsServerURL;
-            $sep = strpos($base, '?') === false ? '?' : (substr($base, -1) === '&' ? '' : '&');
-            $url = $base.$sep.http_build_query(array('MAP' => $map, 'SERVICE' => 'WMS', 'REQUEST' => 'GetCapabilities', 'VERSION' => '1.3.0'));
-            $ctx = stream_context_create(array('http' => array('timeout' => 20, 'ignore_errors' => true, 'follow_location' => 0)));
-            $t0 = microtime(true);
-            $body = @file_get_contents($url, false, $ctx);
-            $ms = (int) round((microtime(true) - $t0) * 1000);
-            $code = 0;
-            if (isset($http_response_header[0]) && preg_match('#\s(\d{3})(\s|$)#', $http_response_header[0], $m)) {
-                $code = (int) $m[1];
-            }
-            $err = null;
-            if ($body === false) {
-                $last = error_get_last();
-                $err = $last ? $last['message'] : 'request failed';
-            }
-            out_json(array(
-                'wms_url' => $base,
-                'map' => $map,
-                'code' => $code,
-                'ms' => $ms,
-                'ok' => $body !== false && $code > 0 && $code < 400 && strpos($body, 'WMS_Capabilities') !== false,
-                'snippet' => $body === false ? null : substr(trim(preg_replace('/\s+/', ' ', strip_tags($body))), 0, 200),
-                'request_error' => $err,
-            ));
+            $probe = qgis_probe($project, $services);
+            $probe['seed_groups'] = $seederContext->seederGroups;
+            $probe['message'] = probe_message($probe);
+            out_json($probe);
 
             break;
 
@@ -470,6 +650,8 @@ try {
             if (count($positional) < 2) {
                 fail('usage: clean <repo> <project> [<layer>]', EXIT_USAGE);
             }
+            // clean() reads the tile capabilities, which needs the identity too
+            $seederContext->seederGroups = project_seed_groups($positional[0], $positional[1]);
             $cache = new \Lizmap\CliHelpers\WMTSCache(function ($line) {
                 fwrite(STDOUT, $line.PHP_EOL);
                 fflush(STDOUT);
