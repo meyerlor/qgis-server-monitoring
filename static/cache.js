@@ -18,7 +18,7 @@
         de: {
             tab_cache: '🧱 Cache-Verwaltung',
             cache_unavailable_title: 'Cache-Verwaltung nicht eingerichtet',
-            cache_unavailable_help: 'Der Cache-Worker läuft als eigener Dienst unter dem PHP-Benutzer von Lizmap (z.&nbsp;B. <code>www-data</code>). Einrichtung: siehe Abschnitt „Tile-Cache-Verwaltung“ in der README.',
+            cache_unavailable_help: 'Der Cache-Worker läuft als eigener Dienst unter dem PHP-Benutzer von Lizmap (z.&nbsp;B. <code>www-data</code>). Einmalig auf dem Server als root einrichten: <code>sudo /opt/monitoring/cache/install-worker.sh</code> – danach diese Seite neu laden. Details: README, Abschnitt „Tile cache worker“.',
             cache_worker_title: '⚙️ Cache-Worker',
             cache_load_title: '🛡️ Betriebsschutz',
             cache_instances_title: '🗂️ Lizmap-Instanzen',
@@ -59,7 +59,7 @@
             c_load_pause: 'Pause bei Last', c_load_off: 'aus', c_load_rule: 'CPU > {cpu} % oder p95 > {p95} ms',
             c_default_pool: 'Seeding-Pool (Standard)', c_instance_default: 'Instanz-Standard',
             c_queue: 'Warteschlange', c_queue_val: '{r} aktiv · {q} wartend · {p} pausiert',
-            c_no_instances: 'Keine Instanz konfiguriert (cache-worker Konfiguration „instances“).',
+            c_no_instances: 'Noch keine Instanz – unten in den Einstellungen „Instanzen suchen“.',
             c_refreshed: 'eingelesen', c_never: 'nie', c_cache: 'Cache', c_webp_ok: 'WebP-Cache ok',
             c_webp_nofix: 'WebP-Cache-Fix fehlt', c_webp_nogd: 'GD ohne WebP',
             c_tile_layers: '{n} cachefähig', c_schedules_n: '{n} Zeitplan/-pläne', c_no_projects: 'Keine Projekte gefunden',
@@ -106,11 +106,41 @@
             c_toast_queued: 'Job #{id} eingereiht', c_toast_saved: 'Zeitplan gespeichert – nächster Lauf {t}',
             c_toast_deleted: 'Zeitplan gelöscht', c_err: 'Fehler: {e}',
             c_force_badge: 'neu rechnen', c_window_badge: 'Zeitfenster',
+            cache_settings_title: '⚙️ Einstellungen',
+            s_summary: '{i} Instanz(en) · {p} Pool(s) · Standard-Pool: {d}',
+            s_bounds: 'Erlaubte Instanz-Ordner: {b} · Pools: {p} · festgelegt in {f}',
+            s_bounds_local: 'nur localhost', s_bounds_any: 'beliebige Hosts',
+            s_file_missing: '(Datei nicht vorhanden – Standardwerte)',
+            s_inst_title: 'Lizmap-Instanzen',
+            s_inst_help: 'Der Worker sucht in den erlaubten Ordnern nach Lizmap-Installationen (<Ordner>/<Name>/lizmap). Angehakte Instanzen werden verwaltet.',
+            s_discover: 'Instanzen suchen', s_discovering: 'Suche läuft …', s_last_discovery: 'zuletzt gesucht: {t}',
+            s_no_discovery: 'Noch nicht gesucht – „Instanzen suchen“ klicken.',
+            s_col_manage: 'verwalten', s_col_name: 'Name', s_col_path: 'Pfad', s_col_version: 'Lizmap',
+            s_col_qgis: 'QGIS Server (wmsServerURL)', s_col_cache: 'Cache', s_col_webp: 'WebP',
+            s_not_found: 'bei der letzten Suche nicht gefunden',
+            s_pools_title: 'QGIS-Pools fürs Seeding',
+            s_pools_help: 'Optional: Kachelanfragen beim Seeding an einen eigenen QGIS-Server-Pool schicken, damit die Pools der Nutzer frei bleiben. Ohne Pool nutzt jede Instanz ihren eigenen QGIS Server.',
+            s_col_url: 'URL', s_col_monitor: 'Dashboard-Pool',
+            s_col_monitor_tip: 'Derselbe Pool im Dashboard – seine Last zählt dann nicht als Nutzerlast (sonst bremst sich das Seeding selbst aus)',
+            s_col_default: 'Standard', s_col_test: 'Test',
+            s_add_pool: '+ Pool hinzufügen', s_suggest: 'Von den Instanzen genutzte QGIS Server:',
+            s_no_default: 'kein Standard-Pool (jede Instanz nutzt ihren eigenen QGIS Server)',
+            s_test: 'Testen', s_testing: 'teste …', s_remove: 'Pool entfernen',
+            s_ops_title: 'Betrieb', s_windows: 'Zeitfenster', s_windows_sub: 'z. B. 20:00-06:00, mehrere mit Komma. Leer = jederzeit.',
+            s_load_enabled: 'Seeding bei Serverlast pausieren', s_cpu: 'CPU-Grenze (%)', s_p95: 'Grenze Antwortzeit Nutzer p95 (ms)',
+            s_resume: 'Fortsetzen nach (s) unter 80 %', s_inv_h: 'Projekte neu einlesen alle (Std., 0 = nie)',
+            s_size_min: 'Cache-Größen messen alle (Min.)', s_hist: 'Job-Verlauf aufbewahren (Tage)',
+            s_save: 'Einstellungen speichern', s_discard: 'Verwerfen',
+            s_saved: 'Gespeichert – der Worker übernimmt die Einstellungen in wenigen Sekunden',
+            s_unsaved: 'ungespeicherte Änderungen', s_saved_by: 'zuletzt gespeichert von {u} am {t}',
+            s_worker_errors: 'Der Worker hat diese Einstellungen verworfen:',
+            s_offline_discover: 'Der Worker läuft nicht – die Suche startet, sobald er wieder läuft.',
+            s_none: 'keiner', s_errors: 'Nicht gespeichert:',
         },
         en: {
             tab_cache: '🧱 Cache Management',
             cache_unavailable_title: 'Cache management not set up',
-            cache_unavailable_help: 'The cache worker runs as its own service as Lizmap\'s PHP user (e.g. <code>www-data</code>). Setup: see section “Tile cache management” in the README.',
+            cache_unavailable_help: 'The cache worker runs as its own service as Lizmap\'s PHP user (e.g. <code>www-data</code>). Set it up once on the server as root: <code>sudo /opt/monitoring/cache/install-worker.sh</code> – then reload this page. Details: README, section “Tile cache worker”.',
             cache_worker_title: '⚙️ Cache worker',
             cache_load_title: '🛡️ Production safeguards',
             cache_instances_title: '🗂️ Lizmap instances',
@@ -138,7 +168,7 @@
             c_load_pause: 'Pause on load', c_load_off: 'off', c_load_rule: 'CPU > {cpu} % or p95 > {p95} ms',
             c_default_pool: 'Seeding pool (default)', c_instance_default: 'instance default',
             c_queue: 'Queue', c_queue_val: '{r} active · {q} waiting · {p} paused',
-            c_no_instances: 'No instance configured (cache worker config “instances”).',
+            c_no_instances: 'No instance yet – use “Find instances” in the settings below.',
             c_refreshed: 'scanned', c_never: 'never', c_cache: 'Cache', c_webp_ok: 'WebP cache ok',
             c_webp_nofix: 'WebP cache fix missing', c_webp_nogd: 'GD without WebP',
             c_tile_layers: '{n} cacheable', c_schedules_n: '{n} schedule(s)', c_no_projects: 'No projects found',
@@ -184,6 +214,36 @@
             c_toast_queued: 'Job #{id} queued', c_toast_saved: 'Schedule saved – next run {t}',
             c_toast_deleted: 'Schedule deleted', c_err: 'Error: {e}',
             c_force_badge: 'recompute', c_window_badge: 'time window',
+            cache_settings_title: '⚙️ Settings',
+            s_summary: '{i} instance(s) · {p} pool(s) · default pool: {d}',
+            s_bounds: 'Allowed instance directories: {b} · pools: {p} · set in {f}',
+            s_bounds_local: 'localhost only', s_bounds_any: 'any host',
+            s_file_missing: '(file not present – defaults)',
+            s_inst_title: 'Lizmap instances',
+            s_inst_help: 'The worker looks for Lizmap installations in the allowed directories (<directory>/<name>/lizmap). Ticked instances are managed.',
+            s_discover: 'Find instances', s_discovering: 'searching …', s_last_discovery: 'last search: {t}',
+            s_no_discovery: 'Not searched yet – click “Find instances”.',
+            s_col_manage: 'manage', s_col_name: 'Name', s_col_path: 'Path', s_col_version: 'Lizmap',
+            s_col_qgis: 'QGIS Server (wmsServerURL)', s_col_cache: 'Cache', s_col_webp: 'WebP',
+            s_not_found: 'not found by the last search',
+            s_pools_title: 'QGIS pools for seeding',
+            s_pools_help: 'Optional: send the tile requests of seeding jobs to a dedicated QGIS Server pool so the users\' pools stay free. Without a pool each instance uses its own QGIS Server.',
+            s_col_url: 'URL', s_col_monitor: 'Dashboard pool',
+            s_col_monitor_tip: 'The same pool in the dashboard – its load is then not counted as user load (otherwise seeding would throttle itself)',
+            s_col_default: 'Default', s_col_test: 'Test',
+            s_add_pool: '+ Add pool', s_suggest: 'QGIS Servers used by the instances:',
+            s_no_default: 'no default pool (each instance uses its own QGIS Server)',
+            s_test: 'Test', s_testing: 'testing …', s_remove: 'Remove pool',
+            s_ops_title: 'Operation', s_windows: 'Time windows', s_windows_sub: 'e.g. 20:00-06:00, several separated by commas. Empty = any time.',
+            s_load_enabled: 'Pause seeding while the server is busy', s_cpu: 'CPU limit (%)', s_p95: 'User p95 response time limit (ms)',
+            s_resume: 'Resume after (s) below 80 %', s_inv_h: 'Rescan projects every (h, 0 = never)',
+            s_size_min: 'Measure cache sizes every (min)', s_hist: 'Keep job history (days)',
+            s_save: 'Save settings', s_discard: 'Discard',
+            s_saved: 'Saved – the worker applies the settings within a few seconds',
+            s_unsaved: 'unsaved changes', s_saved_by: 'last saved by {u} on {t}',
+            s_worker_errors: 'The worker discarded these settings:',
+            s_offline_discover: 'The worker is not running – the search starts once it runs again.',
+            s_none: 'none', s_errors: 'Not saved:',
         },
     };
     Object.assign(translations.de, I18N.de);
@@ -304,7 +364,9 @@
             S.timers.push(setInterval(loadStatus, 10000));
             return;
         }
-        await Promise.all([loadProjects(), loadJobs()]);
+        await Promise.all([loadProjects(), loadJobs(), loadSettings()]);
+        // first run: nothing configured yet -> show the settings right away
+        if (S.form && !S.form.instances.length && !S.settingsOpen) cacheToggleSettings(true);
         if (S.sel) await loadProject();
         S.timers.push(setInterval(loadStatus, 5000));
         S.timers.push(setInterval(loadJobs, 2000));
@@ -324,6 +386,7 @@
         applyExtraI18n($('tab-cache'));
         if (!S.inited) return;
         renderStatus();
+        renderSettings();
         renderProjects();
         renderProject();
         renderJobs();
@@ -398,8 +461,13 @@
             if (i.error) ihtml += '<div class="cache-warn err">' + esc(i.error) + '</div>';
         });
         $('cache-instances-box').innerHTML = ihtml;
+        updateRefreshButtons();
+    }
+
+    function updateRefreshButtons() {
         const refreshing = (S.jobs.active || []).some((j) => j.kind === 'refresh');
-        $('cache-refresh-btn').disabled = refreshing;
+        const none = !((S.status && S.status.instances) || []).length;
+        ['cache-refresh-btn', 'cache-refresh-full-btn'].forEach((id) => { const b = $(id); if (b) b.disabled = refreshing || none; });
     }
 
     window.cacheRefreshInventory = async function (force) {
@@ -411,6 +479,282 @@
             await loadLog();
         } catch (e) { toast(tr('c_err', { e: e.message }), 'err'); }
     };
+
+    // -----------------------------------------------------------------------
+    // Settings: instances, pools, operation (stored in the cache DB; the worker
+    // validates them again against the boundaries of its root-owned file)
+    // -----------------------------------------------------------------------
+    S.settingsOpen = false;
+    S.formDirty = false;
+    S.poolTests = {};        // url -> {state: running|ok|err, msg}
+    S.discoverJob = null;
+
+    async function loadSettings(force) {
+        try {
+            const d = await api('/settings');
+            S.settingsData = d;
+            if (!S.formDirty || force || !S.form) { S.form = JSON.parse(JSON.stringify(d.settings)); S.formDirty = false; }
+        } catch (e) { S.settingsData = null; }
+        renderSettings();
+    }
+
+    window.cacheToggleSettings = function (open) {
+        S.settingsOpen = typeof open === 'boolean' ? open : !S.settingsOpen;
+        $('cache-settings-body').style.display = S.settingsOpen ? '' : 'none';
+        $('cache-settings-caret').textContent = S.settingsOpen ? '▾' : '▸';
+        $('cache-settings-toggle').setAttribute('aria-expanded', S.settingsOpen ? 'true' : 'false');
+        if (S.settingsOpen) renderSettings();
+    };
+
+    function markDirty() {
+        S.formDirty = true;
+        const el = document.getElementById('cache-set-dirty');
+        if (el) el.textContent = '● ' + tr('s_unsaved');
+    }
+
+    async function pollJob(id, onDone, tries) {
+        tries = tries || 0;
+        try {
+            const d = await api('/jobs/' + id + '/log?after=999999999');
+            if (['done', 'failed', 'cancelled'].includes(d.job.status)) { onDone(d.job); return; }
+        } catch (e) { onDone({ status: 'failed', message: e.message }); return; }
+        if (tries > 600) { onDone({ status: 'failed', message: 'timeout' }); return; }
+        setTimeout(() => pollJob(id, onDone, tries + 1), 1000);
+    }
+
+    function poolSuggestions() {
+        const disc = (S.settingsData && S.settingsData.discovery && S.settingsData.discovery.candidates) || [];
+        const have = new Set((S.form.pools || []).map((p) => p.url.replace(/\/+$/, '')));
+        const byUrl = {};
+        disc.forEach((c) => {
+            const u = c.env && c.env.wms_server_url;
+            if (!u) return;
+            const k = u.replace(/\/+$/, '');
+            if (have.has(k)) return;
+            (byUrl[u] = byUrl[u] || []).push(c.name);
+        });
+        return Object.keys(byUrl).map((u) => ({ url: u, names: byUrl[u] }));
+    }
+
+    function renderSettingsSummary() {
+        const el = $('cache-settings-summary');
+        if (!el || !S.form) return;
+        el.textContent = '— ' + tr('s_summary', { i: S.form.instances.length, p: S.form.pools.length, d: S.form.default_pool || tr('s_none') });
+    }
+
+    function renderSettings() {
+        renderSettingsSummary();
+        const body = $('cache-settings-body');
+        if (!body || !S.settingsOpen) return;
+        const d = S.settingsData;
+        if (!d || !S.form) { body.innerHTML = '<div class="no-data">…</div>'; return; }
+        const f = S.form;
+        const b = d.boundaries || {};
+        const workerOnline = S.status && S.status.worker && S.status.worker.online;
+        const discovering = !!S.discoverJob;
+        let h = '<div class="cache-info">' + esc(tr('s_bounds', {
+            b: (b.instances_base || []).join(', '),
+            p: b.allow_remote_pools ? tr('s_bounds_any') : tr('s_bounds_local'),
+            f: (d.config_path || '/etc/lizmap-cache-worker.json') + (d.config_file_exists === false ? ' ' + tr('s_file_missing') : ''),
+        })) + '</div>';
+        if ((d.worker_errors || []).length) {
+            h += '<div class="cache-warn err">' + esc(tr('s_worker_errors')) + '<ul style="margin:4px 0 0 18px;">'
+                + d.worker_errors.map((e) => '<li>' + esc(e) + '</li>').join('') + '</ul></div>';
+        }
+
+        // --- instances ---------------------------------------------------
+        h += '<div class="cache-set-section"><h3>' + esc(tr('s_inst_title')) + '</h3>'
+            + '<div class="cache-muted cache-small">' + esc(tr('s_inst_help')) + '</div>'
+            + '<div class="cache-actions" style="margin-top:8px;"><button class="cache-btn" data-s="discover"' + (discovering ? ' disabled' : '') + '>'
+            + esc(discovering ? tr('s_discovering') : tr('s_discover')) + '</button>'
+            + '<span class="cache-muted cache-small">' + esc(d.discovery ? tr('s_last_discovery', { t: fmtTime(d.discovery.ts) }) : tr('s_no_discovery')) + '</span>'
+            + (!workerOnline ? '<span class="cache-small" style="color:#fcd34d;">' + esc(tr('s_offline_discover')) + '</span>' : '')
+            + '</div>';
+        const cands = (d.discovery && d.discovery.candidates) || [];
+        const rows = cands.map((c) => ({ c, found: true }));
+        f.instances.forEach((i) => { if (!cands.some((c) => c.lizmap_path === i.lizmap_path)) rows.push({ c: { name: i.name, lizmap_path: i.lizmap_path }, found: false }); });
+        if (rows.length) {
+            h += '<div style="overflow-x:auto;"><table class="cache-set-table"><thead><tr><th>' + esc(tr('s_col_manage')) + '</th><th>' + esc(tr('s_col_name'))
+                + '</th><th>' + esc(tr('s_col_version')) + '</th><th>' + esc(tr('s_col_qgis')) + '</th><th>' + esc(tr('s_col_cache')) + '</th><th>'
+                + esc(tr('s_col_webp')) + '</th><th>' + esc(tr('s_col_path')) + '</th></tr></thead><tbody>';
+            rows.forEach(({ c, found }) => {
+                const managed = f.instances.some((i) => i.lizmap_path === c.lizmap_path);
+                const env = c.env || {};
+                let webp = '';
+                if (c.env) webp = env.webp_cache_fix ? (env.gd_webp ? '<span class="cache-badge green">ok</span>' : '<span class="cache-badge amber">' + esc(tr('c_webp_nogd')) + '</span>')
+                    : '<span class="cache-badge amber">' + esc(tr('c_webp_nofix')) + '</span>';
+                h += '<tr class="' + (managed ? '' : 'off') + '"><td><input type="checkbox" data-s="inst" data-path="' + esc(c.lizmap_path) + '" data-name="' + esc(c.name) + '"'
+                    + (managed ? ' checked' : '') + (c.error && !managed ? ' disabled' : '') + ' aria-label="' + esc(tr('s_col_manage') + ' ' + c.name) + '"></td>'
+                    + '<td><b>' + esc(c.name) + '</b></td>'
+                    + '<td>' + esc(env.lizmap_version || '–') + '</td>'
+                    + '<td class="cache-small">' + esc(env.wms_server_url || '–') + '</td>'
+                    + '<td class="cache-small">' + esc(env.cache_storage_type ? env.cache_storage_type + (env.cache_storage_type !== 'redis' ? ' · ' + env.cache_root_directory : '') : '–') + '</td>'
+                    + '<td>' + webp + '</td>'
+                    + '<td class="cache-small cache-muted">' + esc(c.lizmap_path)
+                    + (c.error ? '<div style="color:#fca5a5;">' + esc(c.error) + '</div>' : '')
+                    + (!found ? '<div style="color:#fcd34d;">' + esc(tr('s_not_found')) + '</div>' : '') + '</td></tr>';
+            });
+            h += '</tbody></table></div>';
+        }
+        h += '</div>';
+
+        // --- pools -------------------------------------------------------
+        const monitorPools = d.monitor_pools || [];
+        h += '<div class="cache-set-section"><h3>' + esc(tr('s_pools_title')) + '</h3>'
+            + '<div class="cache-muted cache-small">' + esc(tr('s_pools_help')) + '</div>';
+        if (f.pools.length) {
+            h += '<div style="overflow-x:auto;"><table class="cache-set-table"><thead><tr><th>' + esc(tr('s_col_name')) + '</th><th>' + esc(tr('s_col_url'))
+                + '</th><th title="' + esc(tr('s_col_monitor_tip')) + '">' + esc(tr('s_col_monitor')) + ' ⓘ</th><th>' + esc(tr('s_col_default')) + '</th><th>'
+                + esc(tr('s_col_test')) + '</th><th></th></tr></thead><tbody>';
+            f.pools.forEach((p, i) => {
+                const t = S.poolTests[p.url];
+                const tres = !t ? '' : t.state === 'running' ? '<span class="cache-muted">' + esc(tr('s_testing')) + '</span>'
+                    : '<span class="' + (t.state === 'ok' ? 'cache-test-ok' : 'cache-test-err') + '">' + (t.state === 'ok' ? '✓ ' : '✗ ') + esc(t.msg || '') + '</span>';
+                h += '<tr><td style="min-width:150px;"><input class="cache-input" data-s="pool" data-i="' + i + '" data-k="name" value="' + esc(p.name) + '" aria-label="' + esc(tr('s_col_name')) + '"></td>'
+                    + '<td style="min-width:240px;"><input class="cache-input" data-s="pool" data-i="' + i + '" data-k="url" value="' + esc(p.url) + '" spellcheck="false" placeholder="http://127.0.0.1:7004/" aria-label="' + esc(tr('s_col_url')) + '"></td>'
+                    + '<td><select class="cache-select" data-s="pool" data-i="' + i + '" data-k="monitor_pool" aria-label="' + esc(tr('s_col_monitor')) + '"><option value="">–</option>'
+                    + monitorPools.map((m) => '<option' + (m === p.monitor_pool ? ' selected' : '') + '>' + esc(m) + '</option>').join('') + '</select></td>'
+                    + '<td style="text-align:center;"><input type="radio" name="cache-default-pool" data-s="default" data-i="' + i + '"' + (f.default_pool === p.name ? ' checked' : '') + ' aria-label="' + esc(tr('s_col_default')) + '"></td>'
+                    + '<td class="cache-small" style="min-width:180px;"><button class="cache-btn icon" data-s="test" data-i="' + i + '"' + (t && t.state === 'running' ? ' disabled' : '') + '>' + esc(tr('s_test')) + '</button> ' + tres + '</td>'
+                    + '<td><button class="cache-btn icon danger" data-s="rmpool" data-i="' + i + '" title="' + esc(tr('s_remove')) + '" aria-label="' + esc(tr('s_remove')) + '">✕</button></td></tr>';
+            });
+            h += '</tbody></table></div>'
+                + '<label class="cache-check" style="margin-top:8px;"><input type="radio" name="cache-default-pool" data-s="default" data-i=""' + (!f.default_pool ? ' checked' : '') + '><span>' + esc(tr('s_no_default')) + '</span></label>';
+        }
+        h += '<div class="cache-actions" style="margin-top:8px;"><button class="cache-btn" data-s="addpool">' + esc(tr('s_add_pool')) + '</button></div>';
+        const sugg = poolSuggestions();
+        if (sugg.length) {
+            h += '<div class="cache-small cache-muted" style="margin-top:8px;">' + esc(tr('s_suggest')) + '</div>'
+                + sugg.map((s) => '<span class="cache-chip" role="button" tabindex="0" data-s="suggest" data-url="' + esc(s.url) + '">+ ' + esc(s.url) + ' <span class="cache-muted">(' + esc(s.names.join(', ')) + ')</span></span>').join('');
+        }
+        h += '</div>';
+
+        // --- operation ---------------------------------------------------
+        const lp = f.load_pause || {};
+        h += '<div class="cache-set-section"><h3>' + esc(tr('s_ops_title')) + '</h3><div class="cache-set-grid">'
+            + '<div class="cache-field"><label>' + esc(tr('s_windows')) + '</label><input class="cache-input" data-s="op" data-k="windows" value="' + esc((f.windows || []).join(', ')) + '" placeholder="20:00-06:00" aria-label="' + esc(tr('s_windows')) + '"><div class="sub">' + esc(tr('s_windows_sub')) + '</div></div>'
+            + '<div class="cache-field"><label>' + esc(tr('s_cpu')) + '</label><input class="cache-input" type="number" min="10" max="100" data-s="op" data-k="cpu_percent" value="' + esc(lp.cpu_percent) + '" aria-label="' + esc(tr('s_cpu')) + '"></div>'
+            + '<div class="cache-field"><label>' + esc(tr('s_p95')) + '</label><input class="cache-input" type="number" min="0" data-s="op" data-k="user_p95_ms" value="' + esc(lp.user_p95_ms) + '" aria-label="' + esc(tr('s_p95')) + '"></div>'
+            + '<div class="cache-field"><label>' + esc(tr('s_resume')) + '</label><input class="cache-input" type="number" min="0" data-s="op" data-k="resume_after_s" value="' + esc(lp.resume_after_s) + '" aria-label="' + esc(tr('s_resume')) + '"></div>'
+            + '<div class="cache-field"><label>' + esc(tr('s_inv_h')) + '</label><input class="cache-input" type="number" min="0" data-s="op" data-k="inventory_refresh_hours" value="' + esc(f.inventory_refresh_hours) + '" aria-label="' + esc(tr('s_inv_h')) + '"></div>'
+            + '<div class="cache-field"><label>' + esc(tr('s_size_min')) + '</label><input class="cache-input" type="number" min="10" data-s="op" data-k="size_scan_interval_min" value="' + esc(f.size_scan_interval_min) + '" aria-label="' + esc(tr('s_size_min')) + '"></div>'
+            + '<div class="cache-field"><label>' + esc(tr('s_hist')) + '</label><input class="cache-input" type="number" min="1" data-s="op" data-k="job_history_days" value="' + esc(f.job_history_days) + '" aria-label="' + esc(tr('s_hist')) + '"></div>'
+            + '</div><label class="cache-check" style="margin-top:10px;"><input type="checkbox" data-s="op" data-k="load_enabled"' + (lp.enabled !== false ? ' checked' : '') + '><span>' + esc(tr('s_load_enabled')) + '</span></label></div>';
+
+        // --- save --------------------------------------------------------
+        h += '<div id="cache-set-errors"></div><div class="cache-actions">'
+            + '<button class="cache-btn primary" data-s="save">' + esc(tr('s_save')) + '</button>'
+            + '<button class="cache-btn" data-s="discard">' + esc(tr('s_discard')) + '</button>'
+            + '<span class="cache-small" id="cache-set-dirty" style="color:#fcd34d;">' + (S.formDirty ? '● ' + esc(tr('s_unsaved')) : '') + '</span>'
+            + (d.meta ? '<span class="cache-muted cache-small">' + esc(tr('s_saved_by', { u: d.meta.updated_by, t: fmtTime(d.meta.updated_at) })) + '</span>' : '')
+            + '</div>';
+        body.innerHTML = h;
+        wireSettings(body);
+    }
+
+    function wireSettings(body) {
+        const f = S.form;
+        body.querySelectorAll('[data-s]').forEach((el) => {
+            const kind = el.dataset.s;
+            if (kind === 'inst') {
+                el.addEventListener('change', () => {
+                    const path = el.dataset.path;
+                    f.instances = f.instances.filter((i) => i.lizmap_path !== path);
+                    if (el.checked) f.instances.push({ name: el.dataset.name, lizmap_path: path });
+                    markDirty(); renderSettings();
+                });
+            } else if (kind === 'pool') {
+                el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
+                    const p = f.pools[+el.dataset.i];
+                    const k = el.dataset.k;
+                    if (k === 'name' && f.default_pool === p.name) f.default_pool = el.value.trim();
+                    p[k] = k === 'monitor_pool' ? (el.value || null) : (k === 'name' ? el.value.trim() : el.value.trim());
+                    markDirty(); renderSettingsSummary();
+                });
+            } else if (kind === 'default') {
+                el.addEventListener('change', () => {
+                    f.default_pool = el.dataset.i === '' ? null : f.pools[+el.dataset.i].name;
+                    markDirty(); renderSettingsSummary();
+                });
+            } else if (kind === 'op') {
+                el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => {
+                    const k = el.dataset.k;
+                    f.load_pause = f.load_pause || {};
+                    if (k === 'windows') f.windows = el.value.split(',').map((x) => x.trim()).filter(Boolean);
+                    else if (k === 'load_enabled') f.load_pause.enabled = el.checked;
+                    else if (['cpu_percent', 'user_p95_ms', 'resume_after_s'].includes(k)) f.load_pause[k] = el.value === '' ? null : Number(el.value);
+                    else f[k] = el.value === '' ? null : Number(el.value);
+                    markDirty();
+                });
+            } else if (kind === 'addpool') {
+                el.addEventListener('click', () => { f.pools.push({ name: 'Pool ' + (f.pools.length + 1), url: 'http://127.0.0.1:', monitor_pool: null }); markDirty(); renderSettings(); });
+            } else if (kind === 'rmpool') {
+                el.addEventListener('click', () => {
+                    const p = f.pools.splice(+el.dataset.i, 1)[0];
+                    if (p && f.default_pool === p.name) f.default_pool = null;
+                    markDirty(); renderSettings();
+                });
+            } else if (kind === 'suggest') {
+                const add = () => {
+                    let host = el.dataset.url;
+                    try { const u = new URL(el.dataset.url); host = u.host; } catch (e) { /* keep url */ }
+                    f.pools.push({ name: 'Pool ' + host, url: el.dataset.url, monitor_pool: null });
+                    markDirty(); renderSettings();
+                };
+                el.addEventListener('click', add);
+                el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); add(); } });
+            } else if (kind === 'test') {
+                el.addEventListener('click', async () => {
+                    const url = f.pools[+el.dataset.i].url;
+                    S.poolTests[url] = { state: 'running' };
+                    renderSettings();
+                    try {
+                        const r = await api('/jobs', { method: 'POST', body: { kind: 'pool_test', url } });
+                        pollJob(r.id, (job) => {
+                            S.poolTests[url] = { state: job.status === 'done' ? 'ok' : 'err', msg: job.message };
+                            renderSettings();
+                        });
+                    } catch (e) { S.poolTests[url] = { state: 'err', msg: e.message }; renderSettings(); }
+                });
+            } else if (kind === 'discover') {
+                el.addEventListener('click', async () => {
+                    try {
+                        const r = await api('/jobs', { method: 'POST', body: { kind: 'discover' } });
+                        S.discoverJob = r.id;
+                        S.logJob = r.id; S.logLastId = 0;
+                        renderSettings(); loadJobs(); loadLog();
+                        pollJob(r.id, async () => { S.discoverJob = null; await loadSettings(); });
+                    } catch (e) { toast(tr('c_err', { e: e.message }), 'err'); }
+                });
+            } else if (kind === 'save') {
+                el.addEventListener('click', saveSettings);
+            } else if (kind === 'discard') {
+                el.addEventListener('click', () => loadSettings(true));
+            }
+        });
+    }
+
+    async function saveSettings() {
+        const box = $('cache-set-errors');
+        box.innerHTML = '';
+        try {
+            const init = { method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': await getCsrf() },
+                body: JSON.stringify({ settings: S.form }) };
+            let r = await fetch('/api/cache/settings', init);
+            if (r.status === 403) { init.headers['X-CSRF-Token'] = await getCsrf(true); r = await fetch('/api/cache/settings', init); }
+            const d = await r.json();
+            if (!r.ok) {
+                box.innerHTML = '<div class="cache-warn err">' + esc(tr('s_errors')) + '<ul style="margin:4px 0 0 18px;">'
+                    + (d.errors || [d.error]).map((e) => '<li>' + esc(e) + '</li>').join('') + '</ul></div>';
+                return;
+            }
+            S.formDirty = false;
+            toast(tr('s_saved'), 'ok');
+            await loadSettings(true);
+            setTimeout(() => { loadStatus(); loadProjects(); }, 4000);
+        } catch (e) { toast(tr('c_err', { e: e.message }), 'err'); }
+    }
 
     // -----------------------------------------------------------------------
     // Project list
@@ -828,8 +1172,7 @@
             if (run) { S.logJob = run.id; S.logLastId = 0; }
         }
         renderJobs();
-        const btn = $('cache-refresh-btn');
-        if (btn) btn.disabled = S.jobs.active.some((j) => j.kind === 'refresh');
+        updateRefreshButtons();
     }
 
     window.cacheRenderJobs = renderJobs;

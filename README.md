@@ -36,6 +36,7 @@ System metrics (CPU, RAM) are collected as a secondary data source for correlati
 - **Background queue** with live log; one job at a time, split per zoom level (interrupted jobs resume at the level where they stopped)
 - **Production safeguards**: tile requests can go to a **dedicated QGIS Server pool**; jobs pause automatically while the server is busy (CPU / users' p95 response time) and can be limited to a time window; manual pause / resume / cancel
 - **Read-only .cfg**: image format and cache expiry are set in the Lizmap plugin; the dashboard shows them (greyed out) with a hint, and warns about WebP on Lizmap versions without the WebP cache fix
+- **Configured in the dashboard**: instances are found automatically below `/var/www`, seeding pools can be tested against a real project, time windows and load limits are a form — one install command, no config file to edit
 - The dashboard never runs commands itself: a separate worker service, running as Lizmap's PHP user, executes the jobs (see [Tile cache worker](#tile-cache-worker))
 
 ### Filtering & i18n
@@ -301,52 +302,81 @@ sudo usermod -aG adm monitoring
 
 ### Tile cache worker
 
-The *Cache-Verwaltung* tab needs a separate worker service. The dashboard only stores jobs in a shared SQLite database; the worker executes them with a small PHP helper (`cache/lizmap_cache_helper.php`) that boots each Lizmap installation exactly like Lizmap's own `console.php` and calls Lizmap's seeding classes. Nothing is installed into Lizmap and no Lizmap configuration file is changed. The only difference from `php console.php wmts:cache:seed` is that the helper can send the tile requests of its own process to another QGIS Server pool (`wmsServerURL` is replaced in memory only).
+The *Cache-Verwaltung* tab needs a small worker service next to the dashboard. The dashboard only stores jobs and settings in a shared SQLite database; the worker executes them with a PHP helper (`cache/lizmap_cache_helper.php`) that boots each Lizmap installation exactly like Lizmap's own `console.php` and calls Lizmap's seeding classes. Nothing is installed into Lizmap and no Lizmap configuration file is changed. The only difference from `php console.php wmts:cache:seed` is that the helper can send the tile requests of its own process to another QGIS Server pool (`wmsServerURL` is replaced in memory only).
 
-Requirements: Lizmap Web Client 3.8 or newer, Python 3.8+ (stdlib only, no venv needed), PHP CLI.
+Requirements: Lizmap Web Client 3.8 or newer, Python 3.8+ (standard library only, no venv), PHP CLI, the Lizmap installations on the same host.
 
-**1. Shared group and database directory** — the worker runs as Lizmap's PHP user (`www-data`), the dashboard as its own user; both need write access to the cache DB:
+#### 1. Copy the files
 
-```bash
-sudo groupadd --system lizcache
-sudo usermod -aG lizcache www-data
-sudo usermod -aG lizcache monitoring        # the dashboard's service user (or root)
-sudo install -d -o www-data -g lizcache -m 2770 /var/lib/lizmap-cache
+Besides `monitor.py` and `templates/dashboard.html`, the tab needs these files in the dashboard directory (e.g. `/opt/monitoring`):
+
+```
+cache/                 worker, PHP helper, install script, systemd unit template
+static/cache.js
+templates/cache_tab.html
 ```
 
-**2. Configuration** — copy `cache/lizmap-cache-worker.example.json` to `/etc/lizmap-cache-worker.json` and adjust:
+Restart the dashboard afterwards (`systemctl restart monitoring-dashboard`) — Flask reads the templates at start.
 
-| Key | Meaning |
-|-----|---------|
-| `instances` | One entry per Lizmap installation: `name` and `lizmap_path` (the `lizmap/` directory that contains `application.init.php`) |
-| `pools` | QGIS Server pools the tile requests can be sent to (`name`, `url`). `monitor_pool` = the dashboard's pool key of the same pool, so its load is not counted as user load |
-| `default_pool` | Pool used when a job does not choose one; omit to use each instance's own `wmsServerURL` |
-| `windows` | Optional time windows (`"20:00-06:00"`). Jobs marked "only in time window" and all schedules (by default) only run inside them |
-| `load_pause` | Pause seeding while the machine's CPU is above `cpu_percent` or the users' p95 response time (from the dashboard) is above `user_p95_ms`; resumes after `resume_after_s` below 80 % of the limits |
-
-Check the configuration (as the worker user):
+#### 2. Set up the worker (once, as root)
 
 ```bash
-sudo -u www-data python3 /opt/monitoring/cache/cache_worker.py --config /etc/lizmap-cache-worker.json check
+sudo /opt/monitoring/cache/install-worker.sh
 ```
 
-**3. Service** — install `cache/lizmap-cache-worker.service` (adjust paths/user if needed):
+The script is idempotent (safe to run again) and:
 
-```bash
-sudo cp /opt/monitoring/cache/lizmap-cache-worker.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now lizmap-cache-worker
-journalctl -u lizmap-cache-worker -f
-```
+- creates the group `lizcache` and adds Lizmap's PHP user (`www-data`) — and the dashboard's service user, if it is not root — so both can write the shared database,
+- creates `/var/lib/lizmap-cache` (`www-data:lizcache`, mode `2770`),
+- creates `/etc/lizmap-cache-worker.json` if it does not exist yet (see [Security boundaries](#security-boundaries)),
+- installs and starts the systemd service `lizmap-cache-worker` (runs as `www-data`, low CPU/IO priority) and runs a self-check.
 
-The worker reads all projects on its first start (see the queue in the tab). The dashboard finds the database at `/var/lib/lizmap-cache/cache.db`; set `MONITORING_CACHE_DB` in the dashboard's service to use another path. Restart the dashboard after adding the group so it picks up the new group membership.
+Options: `--php-user USER` if Lizmap's PHP-FPM runs as another user, `--base DIR` (repeatable) if the Lizmap installations are not below `/var/www`, `--allow-remote-pools` to allow QGIS pools on other hosts, `--dashboard-unit NAME` if the dashboard's unit is not `monitoring-dashboard`.
+
+If the script added the dashboard's user to the group, restart the dashboard once more so the new group membership applies.
+
+#### 3. Configure it in the dashboard
+
+Open the tab **Cache-Verwaltung**. On a fresh installation the **Einstellungen** (settings) panel opens by itself:
+
+1. **Lizmap-Instanzen** — click **Instanzen suchen**. The worker looks for `<base>/<name>/lizmap` (e.g. `/var/www/markdorf/lizmap`) and lists each installation with its Lizmap version, QGIS Server URL, cache backend and WebP support. Tick the instances that should be managed. After saving, the worker reads their projects by itself (see the queue).
+2. **QGIS-Pools fürs Seeding** (optional) — to keep seeding away from the users' QGIS Server pools, add a dedicated pool: click one of the suggested URLs (the QGIS Servers your instances use) or **+ Pool hinzufügen**, give it a name and choose it as **Standard**. Set **Dashboard-Pool** to the same pool as it appears in the dashboard (e.g. `qgis-pool4`), so its load is not mistaken for user load. **Testen** asks the pool for a real project of a managed instance, with the same `MAP` path Lizmap uses — if this works, seeding through that pool works. Without a pool every instance uses its own `wmsServerURL`.
+3. **Betrieb** — optional time windows (e.g. `20:00-06:00`; jobs marked "only in time window" and schedules run only inside them), the load limits at which running seeding pauses (machine CPU, users' p95 response time), and the intervals for rescanning projects and measuring cache sizes.
+4. **Einstellungen speichern**. The worker applies new settings within a few seconds; settings it cannot use (e.g. a path that is not a Lizmap installation) are dropped and listed in red in the panel.
+
+Then pick a project on the left, click a layer, choose levels (and optionally a bbox and pool) and start seeding; the queue and the live log show the progress.
+
+#### Security boundaries
+
+Dashboard users can change the settings, but not the boundaries in the root-owned `/etc/lizmap-cache-worker.json` — so they can neither make the worker run PHP from an arbitrary directory nor send requests to arbitrary hosts. The worker enforces them on every settings change (the dashboard only pre-checks):
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `instances_base` | `["/var/www"]` | Lizmap installations must lie below these directories (symlinks and `..` that leave them are rejected) |
+| `allow_remote_pools` | `false` | Pool URLs must point to `localhost` / `127.0.0.1` / `::1`; pool tests never follow redirects |
+| `db_path` | `/var/lib/lizmap-cache/cache.db` | Shared database (set `MONITORING_CACHE_DB` in the dashboard's service if you change it) |
+| `php` | `/usr/bin/php` | PHP CLI used to run the helper |
+
+The file is optional; without it these defaults apply. After editing it: `systemctl restart lizmap-cache-worker`.
+
+#### Updating
+
+Copy the new files (step 1), restart the dashboard and `systemctl restart lizmap-cache-worker`. A seeding job that is running at that moment continues after the restart at the zoom level where it stopped. Settings, schedules and the seeding history are kept in the database.
+
+#### Troubleshooting
+
+- **"Cache-Verwaltung nicht eingerichtet"** — the database does not exist: run step 2.
+- **Worker "offline"** — `systemctl status lizmap-cache-worker` and `journalctl -u lizmap-cache-worker -n 50`.
+- **Self-check** at any time: `sudo -u www-data python3 /opt/monitoring/cache/cache_worker.py --config /etc/lizmap-cache-worker.json check`
+- **"attempt to write a readonly database"** — a user is missing from the `lizcache` group, or a process was not restarted after being added: run step 2 again and restart both services.
+- **Pool test fails with an invalid GetCapabilities** — the pool cannot open the instance's projects (different project root / search paths than the pool Lizmap normally uses); give it the same configuration.
 
 Notes:
 - Never run the worker or the helper as root: files created in Lizmap's temp and cache directories would become unwritable for Lizmap. Both refuse to start as root.
-- Seeding uses the layer settings from the project's `.cfg` (server cache enabled, not *single tile*, image format, cache expiry). Change them in the Lizmap plugin; the tab shows why a layer cannot be seeded.
+- Seeding uses the layer settings from the project's `.cfg` (server cache enabled, not *single tile*, image format, cache expiry). The dashboard never writes the `.cfg`; change them in the Lizmap plugin — the tab shows why a layer cannot be seeded and where to change it.
 - Lizmap's cache keys are hashes, so which levels are cached cannot be read back from the cache. The tab shows the levels seeded through the worker; sizes include tiles cached by normal map use.
 - With `cacheStorageType=redis`, sizes cannot be measured and "clear cache" flushes the whole project (a Lizmap limitation).
-- Basic auth user names are recorded per job (the browser sends them to the dashboard through the proxy).
+- Basic auth user names are recorded per job and per settings change (the browser sends them to the dashboard through the proxy).
 
 ## Disclaimer
 

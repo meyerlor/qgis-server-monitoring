@@ -16,14 +16,24 @@ at the level where it stopped. A running seed job is paused (SIGSTOP) while the
 server is busy or outside the configured time window, and continued (SIGCONT)
 afterwards. Tile requests can be routed to a dedicated QGIS Server pool.
 
+Instances, pools, time windows and load limits are edited in the dashboard
+(stored in the cache DB). The optional, root-owned config file only sets the
+boundaries dashboard users cannot widen (where instances may live, whether
+pools may be non-local) plus paths. Besides the queue, two light tasks run in
+a side thread so they never wait behind a long seeding job:
+
+  discover   find Lizmap installs below the allowed base directories
+  pool_test  check that a QGIS Server answers at a pool URL
+
 stdlib only. Usage:
     cache_worker.py [--config /etc/lizmap-cache-worker.json]
-    cache_worker.py --config ... check        # validate config + instances, then exit
+    cache_worker.py --config ... check        # validate setup + instances, then exit
 
 Copyright (c) 2025 meyerlor - MIT License (see LICENSE)
 """
 
 import argparse
+import copy
 import getpass
 import json
 import os
@@ -36,38 +46,27 @@ import sys
 import threading
 import time
 import traceback
+import urllib.error
+import urllib.request
 from collections import deque
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cache_db as cdb  # noqa: E402
 
-VERSION = '1.0'
+VERSION = '1.1'
 DEFAULT_CONFIG_PATH = '/etc/lizmap-cache-worker.json'
 
-DEFAULTS = {
+# Root-owned file: paths and boundaries only. Everything else is a dashboard setting.
+FILE_DEFAULTS = {
     'db_path': '/var/lib/lizmap-cache/cache.db',
     'php': '/usr/bin/php',
     'helper_path': os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lizmap_cache_helper.php'),
-    'instances': [],             # [{"name": "...", "lizmap_path": ".../lizmap", "php": optional}]
-    'pools': [],                 # [{"name": "...", "url": "http://127.0.0.1:.../ows/", "monitor_pool": "qgis-pool4"}]
-    'default_pool': None,        # pool name used when a job does not choose one; None = instance's own URL
-    'windows': [],               # ["20:00-06:00"]; empty = always allowed
-    'load_pause': {
-        'enabled': True,
-        'cpu_percent': 85,
-        'user_p95_ms': 5000,
-        'watch_pools': None,     # dashboard pool keys whose p95 counts; None = all except seeding pools
-        'resume_below_factor': 0.8,
-        'resume_after_s': 120,
-        'check_interval_s': 5,
-    },
-    'inventory_refresh_hours': 24,
-    'size_scan_interval_min': 360,
-    'job_history_days': 30,
-    'log_lines_per_job': 3000,
     'step_timeout_s': 600,       # for refresh steps (capabilities); seeding has no timeout
+    'instances_base': list(cdb.BOUNDARY_DEFAULTS['instances_base']),
+    'allow_remote_pools': cdb.BOUNDARY_DEFAULTS['allow_remote_pools'],
 }
+SIDE_KINDS = ('discover', 'pool_test')   # run in the side thread, never queued behind seeding
 
 MAX_LOGGED_TILE_ERRORS = 50     # per level; further errors are only counted
 EARLY_ABORT_ERRORS = 200        # abort a level that fails (almost) every tile
@@ -91,27 +90,47 @@ def log(msg):
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-class Config:
+class FileConfig:
+    """The optional root-owned config file: paths + boundaries.
+    Older files may still carry instances/pools/...; those seed the dashboard
+    settings once (when the DB has none yet)."""
+
     def __init__(self, path):
         self.path = path
-        with open(path, encoding='utf-8') as f:
-            raw = json.load(f)
-        data = json.loads(json.dumps(DEFAULTS))
-        for k, v in raw.items():
-            if k == 'load_pause' and isinstance(v, dict):
-                data['load_pause'].update(v)
-            else:
-                data[k] = v
+        self.exists = os.path.isfile(path)
+        raw = {}
+        if self.exists:
+            with open(path, encoding='utf-8') as f:
+                raw = json.load(f)
+            if not isinstance(raw, dict):
+                raise ValueError('config file must contain a JSON object')
+        data = copy.deepcopy(FILE_DEFAULTS)
+        for k in FILE_DEFAULTS:
+            if k in raw:
+                data[k] = raw[k]
+        if isinstance(data['instances_base'], str):
+            data['instances_base'] = [data['instances_base']]
+        if not data['instances_base'] or not all(isinstance(b, str) and os.path.isabs(b) for b in data['instances_base']):
+            raise ValueError('instances_base must be a list of absolute directories')
+        data['allow_remote_pools'] = bool(data['allow_remote_pools'])
         self.__dict__.update(data)
-        self.windows_parsed = [parse_window(w) for w in self.windows]
-        names = [i['name'] for i in self.instances]
-        if len(names) != len(set(names)):
-            raise ValueError('instance names must be unique')
-        for inst in self.instances:
-            if not re.match(r'^[A-Za-z0-9_.-]+$', inst.get('name', '')):
-                raise ValueError('invalid instance name: %r' % inst.get('name'))
-        if self.default_pool and not self.pool(self.default_pool):
-            raise ValueError('default_pool %r is not in pools' % self.default_pool)
+        self.legacy_settings = {k: raw[k] for k in cdb.SETTINGS_DEFAULTS if k in raw}
+
+    @property
+    def boundaries(self):
+        return {'instances_base': self.instances_base, 'allow_remote_pools': self.allow_remote_pools}
+
+
+class Config:
+    """Effective configuration = file (paths, boundaries) + validated dashboard settings."""
+
+    def __init__(self, fcfg, settings):
+        self.file = fcfg
+        self.path = fcfg.path
+        for k in FILE_DEFAULTS:
+            setattr(self, k, getattr(fcfg, k))
+        self.__dict__.update(copy.deepcopy(settings))
+        self.windows_parsed = [cdb.parse_window(w) for w in self.windows]
 
     def instance(self, name):
         return next((i for i in self.instances if i['name'] == name), None)
@@ -138,18 +157,10 @@ class Config:
             'instances': [i['name'] for i in self.instances],
             'size_scan_interval_min': self.size_scan_interval_min,
             'inventory_refresh_hours': self.inventory_refresh_hours,
+            'boundaries': self.file.boundaries,
+            'config_path': self.path,
+            'config_file_exists': self.file.exists,
         }
-
-
-def parse_window(text):
-    m = re.match(r'^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$', text)
-    if not m:
-        raise ValueError('invalid time window %r (expected HH:MM-HH:MM)' % text)
-    a = int(m.group(1)) * 60 + int(m.group(2))
-    b = int(m.group(3)) * 60 + int(m.group(4))
-    if a >= 24 * 60 or b > 24 * 60:
-        raise ValueError('invalid time window %r' % text)
-    return a, b
 
 
 def in_windows(windows, now=None):
@@ -340,6 +351,166 @@ class SizeScanner(threading.Thread):
 
 
 # ---------------------------------------------------------------------------
+# Side jobs: instance discovery and pool tests (own thread + own DB connection)
+# ---------------------------------------------------------------------------
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A pool test must not be redirected elsewhere (would bypass the localhost boundary)."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+class SideRunner(threading.Thread):
+    def __init__(self, worker):
+        super().__init__(name='side-runner', daemon=True)
+        self.fcfg = worker.fcfg
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
+
+    def run(self):
+        conn = cdb.connect(self.fcfg.db_path)
+        while True:
+            try:
+                row = conn.execute("SELECT * FROM jobs WHERE status = 'queued' AND kind IN (?, ?) ORDER BY id LIMIT 1",
+                                   SIDE_KINDS).fetchone()
+                if not row:
+                    time.sleep(1)
+                    continue
+                self.execute(conn, dict(row))
+            except Exception:
+                log('side runner error:\n' + traceback.format_exc())
+                time.sleep(2)
+
+    @staticmethod
+    def _log(conn, jid, line, level='info'):
+        cdb.add_log(conn, jid, line, level)
+        conn.commit()
+
+    def execute(self, conn, job):
+        jid = job['id']
+        cur = conn.execute("UPDATE jobs SET status='running', started_at=? WHERE id=? AND status='queued'",
+                           (cdb.now_str(), jid))
+        conn.commit()
+        if cur.rowcount == 0:      # cancelled in the meantime
+            return
+        try:
+            params = json.loads(job.get('params') or '{}')
+        except ValueError:
+            params = {}
+        try:
+            if job['kind'] == 'discover':
+                status, msg = self.discover(conn, jid)
+            else:
+                status, msg = self.pool_test(conn, jid, params.get('url'))
+        except Exception as e:
+            status, msg = 'failed', str(e)
+        conn.execute('UPDATE jobs SET status=?, finished_at=?, message=? WHERE id=?',
+                     (status, cdb.now_str(), msg, jid))
+        conn.commit()
+        self._log(conn, jid, '%s: %s' % ('Fertig' if status == 'done' else 'Fehlgeschlagen', msg),
+                  'info' if status == 'done' else 'error')
+
+    def helper_env(self, lizmap_path):
+        try:
+            out = subprocess.run([self.fcfg.php, self.fcfg.helper_path, '--lizmap=%s' % lizmap_path, 'env'],
+                                 capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return None, str(e)
+        for line in reversed(out.stdout.strip().splitlines()):
+            if line.startswith('{'):
+                try:
+                    data = json.loads(line)
+                except ValueError:
+                    continue
+                return (None, data['error']) if data.get('error') else (data, None)
+        return None, 'keine Antwort vom Helper (Exit-Code %s) %s' % (out.returncode, (out.stderr or '')[-300:])
+
+    def discover(self, conn, jid):
+        found = []
+        for base in self.fcfg.instances_base:
+            if not os.path.isdir(base):
+                self._log(conn, jid, 'Ordner nicht gefunden: %s' % base, 'warn')
+                continue
+            for entry in sorted(os.listdir(base)):
+                path = os.path.join(base, entry, 'lizmap')
+                if os.path.isfile(os.path.join(path, 'application.init.php')):
+                    found.append((entry, path))
+        self._log(conn, jid, '%d Lizmap-Installation(en) unter %s gefunden' % (len(found), ', '.join(self.fcfg.instances_base)))
+        candidates = []
+        for entry, path in found:
+            name = re.sub(r'[^A-Za-z0-9_.-]', '_', entry)[:64]
+            env, err = self.helper_env(path)
+            candidates.append({'name': name, 'lizmap_path': path, 'env': env, 'error': err})
+            if err:
+                self._log(conn, jid, '%s: %s' % (name, err), 'error')
+            else:
+                self._log(conn, jid, '%s: Lizmap %s, QGIS %s, Cache %s' % (
+                    name, env.get('lizmap_version'), env.get('wms_server_url'), env.get('cache_storage_type')))
+        cdb.meta_set(conn, 'discovery', {'ts': cdb.now_str(), 'ts_epoch': time.time(),
+                                         'bases': self.fcfg.instances_base, 'candidates': candidates})
+        ok = sum(1 for c in candidates if not c['error'])
+        return 'done', '%d Instanz(en) gefunden%s' % (ok, ', %d mit Fehler' % (len(candidates) - ok) if ok < len(candidates) else '')
+
+    def pool_test(self, conn, jid, url):
+        cdb.check_pool_url(url, self.fcfg.boundaries)
+        # Best test: let Lizmap ask the pool for a real project (same MAP path as seeding).
+        row = conn.execute('SELECT p.repository, p.project, i.lizmap_path, i.name FROM projects p '
+                           'JOIN instances i ON i.name = p.instance '
+                           'WHERE p.caps_json IS NOT NULL AND p.error IS NULL '
+                           'ORDER BY p.instance, p.repository, p.project LIMIT 1').fetchone()
+        if row:
+            return self.pool_test_project(conn, jid, url, row)
+        return self.pool_test_plain(conn, jid, url)
+
+    def pool_test_project(self, conn, jid, url, row):
+        target = '%s: %s/%s' % (row['name'], row['repository'], row['project'])
+        self._log(conn, jid, 'Teste %s mit Projekt %s' % (url, target))
+        try:
+            out = subprocess.run([self.fcfg.php, self.fcfg.helper_path, '--lizmap=%s' % row['lizmap_path'],
+                                  '--wms-url=%s' % url, 'wmsping', row['repository'], row['project']],
+                                 capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
+            data = json.loads(out.stdout.strip().splitlines()[-1])
+        except (OSError, subprocess.TimeoutExpired, ValueError, IndexError) as e:
+            return 'failed', 'Test fehlgeschlagen: %s' % e
+        if data.get('error'):
+            return 'failed', data['error']
+        if data.get('ok'):
+            return 'done', 'QGIS Server liefert %s (HTTP %d, %d ms)' % (target, data['code'], data['ms'])
+        if data.get('request_error'):
+            return 'failed', 'nicht erreichbar: %s' % data['request_error']
+        return 'failed', 'kein gültiges GetCapabilities für %s (HTTP %s, MAP=%s): %s' % (
+            target, data.get('code'), data.get('map'), data.get('snippet') or '')
+
+    def pool_test_plain(self, conn, jid, url):
+        """Without an inventory there is no project to ask for: reachability only."""
+        test = url + ('&' if '?' in url else '?') + 'SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0'
+        self._log(conn, jid, 'Teste %s' % test)
+        t0 = time.time()
+        req = urllib.request.Request(test, headers={'User-Agent': 'lizmap-cache-worker/%s' % VERSION})
+        try:
+            with self.opener.open(req, timeout=10) as r:
+                code, body, server = r.status, r.read(65536), r.headers.get('Server', '')
+        except urllib.error.HTTPError as e:
+            code, server = e.code, (e.headers.get('Server', '') if e.headers else '')
+            body = e.read(65536) if e.fp else b''
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            return 'failed', 'nicht erreichbar: %s' % getattr(e, 'reason', e)
+        ms = int((time.time() - t0) * 1000)
+        text = body.decode('utf-8', 'replace')
+        markers = ('ServiceException' in text or 'WMS_Capabilities' in text
+                   or 'qgis' in text.lower() or 'qgis' in server.lower() or 'qjazz' in server.lower())
+        snippet = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', text)).strip()[:120]
+        if 300 <= code < 400:
+            return 'failed', 'leitet weiter (HTTP %d) – bitte die Ziel-URL direkt eintragen' % code
+        if markers:
+            return 'done', 'QGIS Server antwortet (HTTP %d, %d ms)' % (code, ms)
+        if code < 500:
+            # e.g. qjazz answers 400 "Missing project" without MAP
+            return 'done', ('erreichbar (HTTP %d, %d ms: %s) – vollständige Prüfung mit einem Projekt, '
+                            'sobald Instanzen eingelesen sind' % (code, ms, snippet or '–'))
+        return 'failed', 'Serverfehler (HTTP %d, %d ms): %s' % (code, ms, snippet)
+
+
+# ---------------------------------------------------------------------------
 # Running job state
 # ---------------------------------------------------------------------------
 class RunningJob:
@@ -362,20 +533,38 @@ class RunningJob:
         self.image_format = None
 
 
+def load_settings(conn, fcfg):
+    """Dashboard settings from the DB, validated against the file's boundaries.
+    On first start an older config file's instances/pools/... seed them."""
+    raw = cdb.meta_get(conn, 'settings')
+    if raw is None:
+        raw = copy.deepcopy(fcfg.legacy_settings)
+        if raw:
+            cdb.meta_set(conn, 'settings', raw)
+            cdb.meta_set(conn, 'settings_rev', 1)
+    return cdb.validate_settings(raw or {}, fcfg.boundaries)
+
+
 class Worker:
-    def __init__(self, cfg):
-        self.cfg = cfg
-        self.conn = cdb.connect(cfg.db_path)
+    def __init__(self, fcfg):
+        self.fcfg = fcfg
+        self.conn = cdb.connect(fcfg.db_path)
         cdb.init_schema(self.conn)
+        settings, errors = load_settings(self.conn, fcfg)
+        self.cfg = Config(fcfg, settings)
+        self.settings_errors = errors
+        self.settings_rev = cdb.meta_get(self.conn, 'settings_rev', 0)
         self.cpu = CpuSampler()
         self.cur = None
         self.started_at = cdb.now_str()
         self.stop_requested = False
-        self.last = {'heartbeat': 0, 'schedule': 0, 'load': 0, 'maintenance': 0, 'size_full': 0}
+        self.last = {'heartbeat': 0, 'schedule': 0, 'load': 0, 'maintenance': 0, 'size_full': 0, 'settings': 0}
         self.cpu_value = None
         self.p95_value = None
-        self.scanner = SizeScanner(cfg.db_path)
+        self.scanner = SizeScanner(fcfg.db_path)
         self.scanner.start()
+        self.side = SideRunner(self)
+        self.side.start()
         self.sel = selectors.DefaultSelector()
 
     # -- infrastructure ----------------------------------------------------
@@ -424,23 +613,55 @@ class Worker:
     def recover(self):
         """Jobs that were running when the worker stopped are resumed: seeding
         skips the levels this job already recorded in the ledger."""
-        rows = self.db("SELECT id FROM jobs WHERE status = 'running'").fetchall()
+        rows = self.db("SELECT id, kind FROM jobs WHERE status = 'running'").fetchall()
         for r in rows:
+            if r['kind'] in SIDE_KINDS:
+                self.update_job(r['id'], status='failed', finished_at=cdb.now_str(), message='Worker neu gestartet')
+                continue
             self.update_job(r['id'], status='queued', pid=None)
             self.job_log(r['id'], 'Worker neu gestartet – Job wird fortgesetzt', 'warn')
+        self.apply_settings(initial=True)
+
+    def apply_settings(self, initial=False):
+        """Publish the effective config and sync the instances table with it."""
         cdb.meta_set(self.conn, 'worker_config', self.cfg.summary())
+        cdb.meta_set(self.conn, 'settings_errors', self.settings_errors)
+        before = {r['name'] for r in self.db('SELECT name FROM instances').fetchall()}
         for inst in self.cfg.instances:
             self.db('INSERT INTO instances(name, lizmap_path) VALUES (?, ?) '
                     'ON CONFLICT(name) DO UPDATE SET lizmap_path = excluded.lizmap_path',
                     (inst['name'], inst['lizmap_path']))
         names = [i['name'] for i in self.cfg.instances]
-        if names:
-            self.db('DELETE FROM instances WHERE name NOT IN (%s)' % ','.join('?' * len(names)), names)
-        else:
-            self.db('DELETE FROM instances')
-        never = self.db('SELECT COUNT(*) c FROM instances WHERE refreshed_at IS NULL').fetchone()['c']
-        if never and not self.active_job('refresh'):
-            self.enqueue({'kind': 'refresh', 'priority': PRIO_REFRESH, 'created_by': 'Worker (Start)'})
+        removed = before - set(names)
+        for name in removed:
+            # projects of instances no longer managed disappear from the tab
+            self.db('DELETE FROM projects WHERE instance = ?', (name,))
+            self.db('DELETE FROM instances WHERE name = ?', (name,))
+        never = [r['name'] for r in self.db('SELECT name FROM instances WHERE refreshed_at IS NULL').fetchall()]
+        for name in never:
+            if not self.db("SELECT 1 FROM jobs WHERE kind='refresh' AND status IN (?,?,?) AND (instance = ? OR instance IS NULL)",
+                           cdb.ACTIVE_STATUSES + (name,)).fetchone():
+                self.enqueue({'kind': 'refresh', 'instance': name, 'priority': PRIO_REFRESH,
+                              'created_by': 'Worker (Start)' if initial else 'Worker (neue Instanz)'})
+        if self.settings_errors:
+            log('settings problems: ' + '; '.join(self.settings_errors))
+
+    def check_settings(self):
+        """Pick up settings saved in the dashboard (settings_rev is bumped on save)."""
+        rev = cdb.meta_get(self.conn, 'settings_rev', 0)
+        if rev == self.settings_rev:
+            return
+        self.settings_rev = rev
+        settings, errors = load_settings(self.conn, self.fcfg)
+        self.cfg = Config(self.fcfg, settings)
+        self.settings_errors = errors
+        self.apply_settings()
+        log('settings revision %s applied: %d instance(s), %d pool(s), default pool %s, windows %s'
+            % (rev, len(self.cfg.instances), len(self.cfg.pools), self.cfg.default_pool or '(instance URL)',
+               self.cfg.windows or 'always'))
+        if self.cur and self.cur.kind == 'seed' and self.cur.row.get('pool') and not self.cfg.pool(self.cur.row['pool']):
+            self.job_log(self.cur.id, 'Hinweis: der Pool dieses Jobs wurde aus den Einstellungen entfernt '
+                         '(der laufende Job nutzt ihn weiter)', 'warn')
 
     def enqueue(self, job):
         cols = ['kind', 'instance', 'repository', 'project', 'layer', 'tms', 'zmin', 'zmax', 'bbox',
@@ -488,6 +709,9 @@ class Worker:
         else:
             time.sleep(1.0)
 
+        if now - self.last['settings'] >= 3:
+            self.last['settings'] = now
+            self.check_settings()
         self.handle_requested_actions()
         if self.cur:
             self.pump()
@@ -643,7 +867,7 @@ class Worker:
 
     def maybe_auto_refresh(self):
         hours = self.cfg.inventory_refresh_hours
-        if not hours or self.active_job('refresh'):
+        if not hours or not self.cfg.instances or self.active_job('refresh'):
             return
         row = self.db('SELECT MIN(refreshed_at) m FROM instances').fetchone()
         last = cdb.parse_time(row['m']) if row else None
@@ -698,7 +922,8 @@ class Worker:
     # -- job execution -----------------------------------------------------------
     def start_next_job(self):
         window_ok = in_windows(self.cfg.windows_parsed)
-        rows = self.db("SELECT * FROM jobs WHERE status = 'queued' ORDER BY priority DESC, id ASC").fetchall()
+        rows = self.db("SELECT * FROM jobs WHERE status = 'queued' AND kind NOT IN (?, ?) "
+                       "ORDER BY priority DESC, id ASC", SIDE_KINDS).fetchall()
         for row in rows:
             if row['kind'] == 'seed' and row['window_only'] and not window_ok:
                 continue      # wait for the window; other jobs may still run
@@ -1116,22 +1341,38 @@ def fmt_duration(seconds):
 
 
 # ---------------------------------------------------------------------------
-def cmd_check(cfg):
-    """Validate config and every instance (runs `env` through the helper)."""
+def cmd_check(fcfg):
+    """Validate the setup and every configured instance (runs `env` through the helper)."""
     ok = True
-    print('config:', cfg.path)
-    print('db:', cfg.db_path, '(dir writable)' if os.access(os.path.dirname(cfg.db_path) or '.', os.W_OK) else '(dir NOT writable!)')
-    print('helper:', cfg.helper_path, 'ok' if os.path.isfile(cfg.helper_path) else 'MISSING')
+    print('config file:', fcfg.path, '' if fcfg.exists else '(not present – defaults used)')
+    db_dir = os.path.dirname(fcfg.db_path) or '.'
+    print('db:', fcfg.db_path, '(dir writable)' if os.access(db_dir, os.W_OK) else '(dir NOT writable!)')
+    print('helper:', fcfg.helper_path, 'ok' if os.path.isfile(fcfg.helper_path) else 'MISSING')
+    print('php:', fcfg.php, 'ok' if os.access(fcfg.php, os.X_OK) else 'NOT FOUND')
     print('running as:', getpass.getuser())
+    print('allowed instance directories:', ', '.join(fcfg.instances_base))
+    print('pools allowed:', 'any host' if fcfg.allow_remote_pools else 'localhost only')
     if os.geteuid() == 0:
         print('WARNING: running as root – run the worker as the Lizmap PHP user (e.g. www-data)')
         ok = False
+    if not os.access(db_dir, os.W_OK):
+        print('settings: (cannot open the cache DB)')
+        return 1
+    conn = cdb.connect(fcfg.db_path)
+    cdb.init_schema(conn)
+    settings, errors = load_settings(conn, fcfg)
+    cfg = Config(fcfg, settings)
+    for e in errors:
+        print('settings problem:', e)
+        ok = False
+    if not cfg.instances:
+        print('no instances configured yet – add them in the dashboard: Cache-Verwaltung → Einstellungen → Instanzen suchen')
     for p in cfg.pools:
         print('pool %s: %s' % (p['name'], p['url']))
     print('windows:', cfg.windows or 'always')
     for inst in cfg.instances:
         url, _ = cfg.pool_url(None)
-        args = [inst.get('php') or cfg.php, cfg.helper_path, '--lizmap=%s' % inst['lizmap_path']]
+        args = [cfg.php, cfg.helper_path, '--lizmap=%s' % inst['lizmap_path']]
         if url:
             args.append('--wms-url=%s' % url)
         args.append('env')
@@ -1159,16 +1400,16 @@ def main():
     ap.add_argument('command', nargs='?', choices=['run', 'check'], default='run')
     a = ap.parse_args()
     try:
-        cfg = Config(a.config)
+        fcfg = FileConfig(a.config)
     except (OSError, ValueError) as e:
         print('config error: %s' % e, file=sys.stderr)
         return 2
     if a.command == 'check':
-        return cmd_check(cfg)
+        return cmd_check(fcfg)
     if os.geteuid() == 0:
         print('refusing to run as root: run the worker as the Lizmap PHP user (e.g. www-data)', file=sys.stderr)
         return 2
-    Worker(cfg).run()
+    Worker(fcfg).run()
     return 0
 
 

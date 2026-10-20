@@ -1,7 +1,7 @@
 <!-- Tab: Cache-Verwaltung (tile cache seeding via the separate cache worker) -->
 <style>
     /* the dashboard styles every input/select globally (min-width 200px, big padding) */
-    #tab-cache input[type=checkbox] { min-width: 0; width: 15px; height: 15px; padding: 0; margin: 0; accent-color: #3b82f6; flex-shrink: 0; }
+    #tab-cache input[type=checkbox], #tab-cache input[type=radio] { min-width: 0; width: 15px; height: 15px; padding: 0; margin: 0; accent-color: #3b82f6; flex-shrink: 0; }
     #tab-cache .cache-input, #tab-cache .cache-select { min-width: 0; border-width: 1px; }
     .cache-muted { color: #94a3b8; }
     .cache-small { font-size: 0.85em; }
@@ -98,6 +98,22 @@
     .cache-log .ln.warn { color: #fcd34d; }
     .cache-log .ln.error { color: #fca5a5; }
     .cache-log .ln.step { color: #93c5fd; font-weight: 700; }
+    .cache-collapse { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; color: #60a5fa;
+                      font-size: 1.15em; font-weight: 700; cursor: pointer; padding: 0; text-align: left; font-family: inherit; }
+    .cache-collapse:focus-visible { outline: 2px solid #60a5fa; outline-offset: 4px; border-radius: 4px; }
+    .cache-set-section { margin-bottom: 22px; }
+    .cache-set-section h3 { color: #cbd5e1; font-size: 1em; margin: 0 0 6px; }
+    .cache-set-table { width: 100%; border-collapse: collapse; font-size: 0.88em; margin-top: 8px; }
+    .cache-set-table th { text-align: left; color: #94a3b8; font-weight: 600; padding: 6px; border-bottom: 2px solid #334155; white-space: nowrap; }
+    .cache-set-table td { padding: 6px; border-bottom: 1px solid #334155; vertical-align: middle; }
+    .cache-set-table tr.off td { color: #64748b; }
+    .cache-set-table .cache-input { width: 100%; }
+    .cache-chip { display: inline-block; margin: 4px 6px 0 0; padding: 3px 9px; border-radius: 12px; border: 1px dashed #475569;
+                  color: #93c5fd; background: #0f172a; cursor: pointer; font-size: 0.85em; }
+    .cache-chip:hover { border-color: #60a5fa; }
+    .cache-set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px 18px; }
+    .cache-test-ok { color: #86efac; }
+    .cache-test-err { color: #fca5a5; }
     .cache-toast { position: fixed; right: 24px; bottom: 24px; max-width: 460px; padding: 12px 16px; border-radius: 8px;
                    background: #1e293b; border: 1px solid #475569; box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 1000; font-size: 0.9em; }
     .cache-toast.err { border-color: #ef4444; }
@@ -129,9 +145,18 @@
                 <div id="cache-instances-box"></div>
                 <div class="cache-actions" style="margin-top:12px;">
                     <button class="cache-btn" id="cache-refresh-btn" onclick="cacheRefreshInventory(false)" data-i18n="cache_refresh">Projekte neu einlesen</button>
-                    <button class="cache-btn" onclick="cacheRefreshInventory(true)" data-i18n="cache_refresh_full" data-i18n-title="cache_refresh_full_tip">Alle neu analysieren</button>
+                    <button class="cache-btn" id="cache-refresh-full-btn" onclick="cacheRefreshInventory(true)" data-i18n="cache_refresh_full" data-i18n-title="cache_refresh_full_tip">Alle neu analysieren</button>
                 </div>
             </div>
+        </div>
+
+        <div class="card" id="cache-settings-card" style="margin-bottom:20px;">
+            <button class="cache-collapse" id="cache-settings-toggle" aria-expanded="false" aria-controls="cache-settings-body" onclick="cacheToggleSettings()">
+                <span class="cache-caret" id="cache-settings-caret">▸</span>
+                <span data-i18n="cache_settings_title">⚙️ Einstellungen</span>
+                <span class="cache-muted cache-small" id="cache-settings-summary" style="font-weight:400;"></span>
+            </button>
+            <div id="cache-settings-body" style="display:none; margin-top:14px;"></div>
         </div>
 
         <div class="cache-layout">
