@@ -15,13 +15,17 @@ stdlib only — the worker has no third-party dependencies.
 Copyright (c) 2025 meyerlor - MIT License (see LICENSE)
 """
 
+import copy
+import ipaddress
 import json
 import math
 import os
+import re
 import sqlite3
 from datetime import datetime
+from urllib.parse import urlparse
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -198,8 +202,12 @@ def _share_with_group(path):
 
 def init_schema(conn):
     conn.executescript(SCHEMA)
-    conn.execute("INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)",
-                 (str(SCHEMA_VERSION),))
+    # v2: free-form job parameters (pool test URL, discovery base, ...)
+    cols = {r['name'] for r in conn.execute('PRAGMA table_info(jobs)')}
+    if 'params' not in cols:
+        conn.execute('ALTER TABLE jobs ADD COLUMN params TEXT')
+    conn.execute("INSERT INTO meta(key, value) VALUES ('schema_version', ?) "
+                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (str(SCHEMA_VERSION),))
     conn.commit()
 
 
@@ -298,3 +306,183 @@ def plan_levels(caps, layer_name, tms_ref, zmin, zmax, bbox=None):
 def cache_dir_name(tms_ref):
     """Lizmap's file-cache sub directory for a tile matrix set ('EPSG:3857' -> 'EPSG_3857')."""
     return tms_ref.replace(':', '_')
+
+
+# ---------------------------------------------------------------------------
+# Settings
+#
+# Two levels, on purpose:
+#  * boundaries — in a root-owned file read only by the worker
+#    (/etc/lizmap-cache-worker.json): where Lizmap instances may live and
+#    whether pools may be non-local. Dashboard users cannot widen them, so they
+#    can neither make the worker run PHP from an arbitrary directory nor send
+#    requests to arbitrary hosts.
+#  * settings — everything operational (instances, pools, time windows, load
+#    limits, intervals); edited in the dashboard, stored in meta 'settings'.
+#    The worker validates them against its boundaries before using them.
+# ---------------------------------------------------------------------------
+BOUNDARY_DEFAULTS = {
+    'instances_base': ['/var/www'],     # instances must be <base>/<name>/lizmap
+    'allow_remote_pools': False,         # pools only on localhost
+}
+
+SETTINGS_DEFAULTS = {
+    'instances': [],                     # [{"name", "lizmap_path"}]
+    'pools': [],                         # [{"name", "url", "monitor_pool"}]
+    'default_pool': None,                # pool name; None = each instance's own wmsServerURL
+    'windows': [],                       # ["20:00-06:00"]; empty = always allowed
+    'load_pause': {
+        'enabled': True,
+        'cpu_percent': 85,
+        'user_p95_ms': 5000,
+        'watch_pools': None,             # None = all dashboard pools except seeding pools
+        'resume_below_factor': 0.8,
+        'resume_after_s': 120,
+        'check_interval_s': 5,
+    },
+    'inventory_refresh_hours': 24,
+    'size_scan_interval_min': 360,
+    'job_history_days': 30,
+    'log_lines_per_job': 3000,
+}
+
+NAME_RE = re.compile(r'^[A-Za-z0-9_.-]{1,64}$')
+
+
+def parse_window(text):
+    m = re.match(r'^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$', str(text))
+    if not m:
+        raise ValueError('Zeitfenster „%s“ ungültig (Format HH:MM-HH:MM)' % text)
+    a = int(m.group(1)) * 60 + int(m.group(2))
+    b = int(m.group(3)) * 60 + int(m.group(4))
+    if a >= 24 * 60 or b > 24 * 60 or int(m.group(2)) > 59 or int(m.group(4)) > 59 or a == b:
+        raise ValueError('Zeitfenster „%s“ ungültig' % text)
+    return a, b
+
+
+def is_loopback_url(url):
+    host = (urlparse(url).hostname or '').lower()
+    if host == 'localhost':
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def path_is_under(path, bases):
+    real = os.path.realpath(path)
+    for base in bases:
+        b = os.path.realpath(base)
+        if real == b or real.startswith(b.rstrip('/') + '/'):
+            return True
+    return False
+
+
+def check_instance_path(path, boundaries, check_files=True):
+    """Raises ValueError unless path is <base>/<name>/lizmap below an allowed base."""
+    if not path or not os.path.isabs(path):
+        raise ValueError('Lizmap-Pfad muss absolut sein: %s' % path)
+    if not path_is_under(path, boundaries['instances_base']):
+        raise ValueError('Lizmap-Pfad liegt außerhalb der erlaubten Ordner (%s): %s'
+                         % (', '.join(boundaries['instances_base']), path))
+    if check_files and not os.path.isfile(os.path.join(path, 'application.init.php')):
+        raise ValueError('keine Lizmap-Installation (application.init.php fehlt): %s' % path)
+
+
+def check_pool_url(url, boundaries):
+    if not isinstance(url, str) or not re.match(r'^https?://[^\s/]+', url):
+        raise ValueError('Pool-URL muss mit http:// oder https:// beginnen: %s' % url)
+    if not boundaries.get('allow_remote_pools') and not is_loopback_url(url):
+        raise ValueError('Pool-URL muss auf localhost zeigen (entfernte Pools sind in '
+                         '/etc/lizmap-cache-worker.json nicht freigegeben): %s' % url)
+
+
+def _num(value, name, lo, hi, cast=float):
+    try:
+        v = cast(value)
+    except (TypeError, ValueError):
+        raise ValueError('%s muss eine Zahl sein' % name)
+    if not (lo <= v <= hi):
+        raise ValueError('%s muss zwischen %s und %s liegen' % (name, lo, hi))
+    return v
+
+
+def validate_settings(raw, boundaries, check_files=True):
+    """Validate dashboard settings against the worker's boundaries.
+    Returns (clean_settings, errors). Invalid entries are dropped, not guessed."""
+    boundaries = dict(BOUNDARY_DEFAULTS, **(boundaries or {}))
+    raw = raw if isinstance(raw, dict) else {}
+    s = copy.deepcopy(SETTINGS_DEFAULTS)
+    errors = []
+
+    seen = set()
+    for inst in raw.get('instances') or []:
+        try:
+            name = str(inst.get('name') or '').strip()
+            path = str(inst.get('lizmap_path') or '').strip().rstrip('/')
+            if not NAME_RE.match(name):
+                raise ValueError('Instanzname ungültig: „%s“' % name)
+            if name in seen:
+                raise ValueError('Instanzname doppelt: %s' % name)
+            check_instance_path(path, boundaries, check_files)
+            seen.add(name)
+            s['instances'].append({'name': name, 'lizmap_path': path})
+        except (ValueError, AttributeError) as e:
+            errors.append(str(e))
+
+    pool_names = set()
+    for p in raw.get('pools') or []:
+        try:
+            name = str(p.get('name') or '').strip()
+            url = str(p.get('url') or '').strip()
+            if not name or len(name) > 60:
+                raise ValueError('Poolname fehlt oder ist zu lang')
+            if name in pool_names:
+                raise ValueError('Poolname doppelt: %s' % name)
+            check_pool_url(url, boundaries)
+            mp = p.get('monitor_pool') or None
+            if mp is not None and not NAME_RE.match(str(mp)):
+                raise ValueError('Dashboard-Pool ungültig: %s' % mp)
+            pool_names.add(name)
+            s['pools'].append({'name': name, 'url': url, 'monitor_pool': mp})
+        except (ValueError, AttributeError) as e:
+            errors.append(str(e))
+
+    dp = raw.get('default_pool') or None
+    if dp and dp not in pool_names:
+        errors.append('Standard-Pool „%s“ existiert nicht' % dp)
+        dp = None
+    s['default_pool'] = dp
+
+    for w in raw.get('windows') or []:
+        try:
+            parse_window(w)
+            s['windows'].append(str(w).strip())
+        except ValueError as e:
+            errors.append(str(e))
+
+    lp = raw.get('load_pause') or {}
+    s['load_pause']['enabled'] = bool(lp.get('enabled', True))
+    # each limit on its own: one bad value must not reset the others to defaults
+    for key, name, lo, hi, cast in (('cpu_percent', 'CPU-Grenze', 10, 100, float),
+                                    ('user_p95_ms', 'p95-Grenze', 0, 600000, float),
+                                    ('resume_after_s', 'Fortsetzen nach', 0, 3600, int),
+                                    ('check_interval_s', 'Prüfintervall', 1, 300, int)):
+        if lp.get(key) is not None:
+            try:
+                s['load_pause'][key] = _num(lp[key], name, lo, hi, cast)
+            except ValueError as e:
+                errors.append(str(e))
+    wp = lp.get('watch_pools')
+    s['load_pause']['watch_pools'] = [str(x) for x in wp] if isinstance(wp, list) and wp else None
+
+    for key, name, lo, hi in (('inventory_refresh_hours', 'Inventar-Intervall', 0, 24 * 30),
+                              ('size_scan_interval_min', 'Größenmessung', 10, 60 * 24 * 7),
+                              ('job_history_days', 'Job-Verlauf', 1, 365)):
+        if key in raw:
+            try:
+                s[key] = _num(raw[key], name, lo, hi, int)
+            except ValueError as e:
+                errors.append(str(e))
+    return s, errors

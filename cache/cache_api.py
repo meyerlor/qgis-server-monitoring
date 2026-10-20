@@ -443,12 +443,13 @@ def get_jobs():
     limit = max(1, min(int(request.args.get('limit', 40) or 40), 200))
     conn = open_db()
     try:
+        # pool tests are shown next to the pool in the settings, not in the queue
         active = [job_view(j) for j in conn.execute(
-            'SELECT * FROM jobs WHERE status IN (?,?,?) ORDER BY '
+            "SELECT * FROM jobs WHERE status IN (?,?,?) AND kind != 'pool_test' ORDER BY "
             "CASE status WHEN 'running' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END, priority DESC, id ASC",
             cdb.ACTIVE_STATUSES)]
         recent = [job_view(j) for j in conn.execute(
-            'SELECT * FROM jobs WHERE status NOT IN (?,?,?) ORDER BY id DESC LIMIT ?',
+            "SELECT * FROM jobs WHERE status NOT IN (?,?,?) AND kind != 'pool_test' ORDER BY id DESC LIMIT ?",
             cdb.ACTIVE_STATUSES + (limit,))]
         return jsonify({'active': active, 'recent': recent, 'worker': worker_status(conn)})
     finally:
@@ -506,6 +507,17 @@ def post_job():
             target, _ = validate_seed_target(conn, data, need_levels=False)
             job.update(target)
             job['priority'] = 20
+        elif kind == 'discover':
+            if conn.execute("SELECT 1 FROM jobs WHERE kind='discover' AND status IN (?,?,?)", cdb.ACTIVE_STATUSES).fetchone():
+                raise ApiError('Instanzsuche läuft bereits', 409)
+            job['priority'] = 30
+        elif kind == 'pool_test':
+            url = str(data.get('url') or '').strip()
+            try:
+                cdb.check_pool_url(url, boundaries(conn))
+            except ValueError as e:
+                raise ApiError(str(e))
+            job.update({'priority': 30, 'params': json.dumps({'url': url})})
         else:
             raise ApiError('Unbekannter Job-Typ')
         cols = list(job)
@@ -536,6 +548,67 @@ def post_job_action(job_id):
             {'pause': 'Pause', 'resume': 'Fortsetzen', 'cancel': 'Abbruch'}[action], current_user()))
         conn.commit()
         return jsonify({'ok': True})
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Settings (instances, pools, time windows, load limits) — edited here,
+# validated again by the worker against the boundaries of its root-owned file
+# ---------------------------------------------------------------------------
+def boundaries(conn):
+    wc = cdb.meta_get(conn, 'worker_config') or {}
+    return dict(cdb.BOUNDARY_DEFAULTS, **(wc.get('boundaries') or {}))
+
+
+def merged_settings(stored):
+    s = json.loads(json.dumps(cdb.SETTINGS_DEFAULTS))
+    for k, v in (stored or {}).items():
+        if k == 'load_pause' and isinstance(v, dict):
+            s['load_pause'].update(v)
+        elif k in s:
+            s[k] = v
+    return s
+
+
+@bp.route('/settings')
+def get_settings():
+    conn = open_db()
+    try:
+        wc = cdb.meta_get(conn, 'worker_config') or {}
+        return jsonify({
+            'settings': merged_settings(cdb.meta_get(conn, 'settings')),
+            'rev': cdb.meta_get(conn, 'settings_rev', 0),
+            'meta': cdb.meta_get(conn, 'settings_meta'),
+            'worker_errors': cdb.meta_get(conn, 'settings_errors') or [],
+            'boundaries': boundaries(conn),
+            'config_path': wc.get('config_path'),
+            'config_file_exists': wc.get('config_file_exists'),
+            'discovery': cdb.meta_get(conn, 'discovery'),
+            'monitor_pools': list(current_app.config.get('MONITOR_POOLS') or []),
+        })
+    finally:
+        conn.close()
+
+
+@bp.route('/settings', methods=['POST'])
+def post_settings():
+    require_csrf()
+    data = (request.get_json(silent=True) or {}).get('settings')
+    if not isinstance(data, dict):
+        raise ApiError('Einstellungen fehlen')
+    conn = open_db()
+    try:
+        # only the boundaries here: whether a path really is a Lizmap install is checked
+        # by the worker (it runs where the instances are and reports problems back)
+        clean, errors = cdb.validate_settings(data, boundaries(conn), check_files=False)
+        if errors:
+            return jsonify({'error': 'Einstellungen nicht gespeichert', 'errors': errors}), 400
+        rev = int(cdb.meta_get(conn, 'settings_rev', 0) or 0) + 1
+        cdb.meta_set(conn, 'settings', clean)
+        cdb.meta_set(conn, 'settings_meta', {'updated_by': current_user(), 'updated_at': cdb.now_str()})
+        cdb.meta_set(conn, 'settings_rev', rev)    # bumped last: the worker reloads on change
+        return jsonify({'ok': True, 'rev': rev, 'settings': clean})
     finally:
         conn.close()
 

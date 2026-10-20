@@ -24,6 +24,8 @@
  *   seed <repo> <project> <layer> <tms> <zmin> <zmax> [--bbox=x1,y1,x2,y2] [--force]
  *                                              text: Lizmap's verbose seeding output
  *   clean <repo> <project> [<layer>]           text: Lizmap's cache clean output
+ *   wmsping <repo> <project>                   JSON: WMS GetCapabilities of the project at the
+ *                                              (overridden) wmsServerURL, with Lizmap's MAP path
  *
  * Copyright (c) 2025 meyerlor - MIT License (see LICENSE)
  */
@@ -54,7 +56,7 @@ foreach (array_slice($argv, 1) as $arg) {
     }
 }
 $command = array_shift($positional);
-$jsonCommands = array('env', 'projects', 'capabilities');
+$jsonCommands = array('env', 'projects', 'capabilities', 'wmsping');
 
 function out_json($data)
 {
@@ -72,8 +74,8 @@ function fail($message, $code = EXIT_ERROR)
     exit($code);
 }
 
-if (!$command || !in_array($command, array('env', 'projects', 'capabilities', 'seed', 'clean'), true)) {
-    fwrite(STDERR, "usage: php lizmap_cache_helper.php --lizmap=<dir> [--wms-url=<url>] env|projects|capabilities|seed|clean ...\n");
+if (!$command || !in_array($command, array('env', 'projects', 'capabilities', 'seed', 'clean', 'wmsping'), true)) {
+    fwrite(STDERR, "usage: php lizmap_cache_helper.php --lizmap=<dir> [--wms-url=<url>] env|projects|capabilities|seed|clean|wmsping ...\n");
     exit(EXIT_USAGE);
 }
 
@@ -427,6 +429,42 @@ try {
             });
             $rc = $cache->seed($repoKey, $projectKey, $layerName, $tms, $zmin, $zmax, $bbox, true, false, !empty($options['force']));
             exit($rc ? EXIT_SEED_FAILED : EXIT_OK);
+
+        case 'wmsping':
+            // Does the (pool) QGIS Server serve this instance's projects? Same MAP
+            // path Lizmap sends (relative or absolute per relativeWMSPath), no cache.
+            if (count($positional) < 2) {
+                fail('usage: wmsping <repo> <project>', EXIT_USAGE);
+            }
+            $project = load_project($positional[0], $positional[1]);
+            $map = $project->getRelativeQgisPath();
+            $base = $services->wmsServerURL;
+            $sep = strpos($base, '?') === false ? '?' : (substr($base, -1) === '&' ? '' : '&');
+            $url = $base.$sep.http_build_query(array('MAP' => $map, 'SERVICE' => 'WMS', 'REQUEST' => 'GetCapabilities', 'VERSION' => '1.3.0'));
+            $ctx = stream_context_create(array('http' => array('timeout' => 20, 'ignore_errors' => true, 'follow_location' => 0)));
+            $t0 = microtime(true);
+            $body = @file_get_contents($url, false, $ctx);
+            $ms = (int) round((microtime(true) - $t0) * 1000);
+            $code = 0;
+            if (isset($http_response_header[0]) && preg_match('#\s(\d{3})(\s|$)#', $http_response_header[0], $m)) {
+                $code = (int) $m[1];
+            }
+            $err = null;
+            if ($body === false) {
+                $last = error_get_last();
+                $err = $last ? $last['message'] : 'request failed';
+            }
+            out_json(array(
+                'wms_url' => $base,
+                'map' => $map,
+                'code' => $code,
+                'ms' => $ms,
+                'ok' => $body !== false && $code > 0 && $code < 400 && strpos($body, 'WMS_Capabilities') !== false,
+                'snippet' => $body === false ? null : substr(trim(preg_replace('/\s+/', ' ', strip_tags($body))), 0, 200),
+                'request_error' => $err,
+            ));
+
+            break;
 
         case 'clean':
             if (count($positional) < 2) {

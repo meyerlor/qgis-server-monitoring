@@ -182,6 +182,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cac
 try:
     import cache_api
     app.register_blueprint(cache_api.bp)
+    # pool keys for the settings: which seeding pool is which dashboard pool
+    app.config['MONITOR_POOLS'] = POOL_NAMES
 except ImportError as e:
     cache_api = None
     print(f"Tile-cache management disabled: {e}")
