@@ -524,6 +524,7 @@
             <button class="tab" onclick="switchTab('analytics')" data-i18n="tab_analytics">📈 Analytics</button>
             <button class="tab" onclick="switchTab('system')" data-i18n="tab_system">💻 System History</button>
             <button class="tab" onclick="switchTab('usage')" data-i18n="tab_usage">👁️ Nutzungsprotokoll</button>
+            <button class="tab" onclick="switchTab('cache')" data-i18n="tab_cache">🧱 Cache-Verwaltung</button>
         </div>
         
         <!-- Tab 1: Live Monitor -->
@@ -1023,6 +1024,8 @@
             </div>
         </div>
 
+        {% include 'cache_tab.html' %}
+
     </div>
 
     <script>
@@ -1371,6 +1374,7 @@
             updateChartLabels();
             // Usage log labels are rendered by JS, not by data-i18n attributes.
             if (usageTabInitialized) renderUsageLogTable();
+            if (window.cacheOnLanguage) cacheOnLanguage();
         }
 
         let hideUsernames = localStorage.getItem('dashboard_hide_names') === 'true';
@@ -1675,6 +1679,7 @@
                 clearInterval(usageRefreshInterval);
                 usageRefreshInterval = null;
             }
+            if (window.cacheTabStop) cacheTabStop();
 
             // Show selected tab
             document.getElementById('tab-' + tabName).classList.add('active');
@@ -1702,6 +1707,8 @@
                 usageRefreshInterval = setInterval(() => {
                     loadUsage();
                 }, 30000);
+            } else if (tabName === 'cache' && window.cacheTabStart) {
+                cacheTabStart();
             }
         }
         
@@ -3232,5 +3239,6 @@
         applyTranslations();
         applyHideUsernames();
     </script>
+    <script src="{{ url_for('static', filename='cache.js', v=cache_static_v|default(0)) }}"></script>
 </body>
 </html>

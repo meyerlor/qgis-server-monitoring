@@ -176,6 +176,16 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
+# Tile-cache management (optional): the dashboard only reads/writes the shared
+# cache DB; jobs run in the separate cache worker (cache/cache_worker.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache'))
+try:
+    import cache_api
+    app.register_blueprint(cache_api.bp)
+except ImportError as e:
+    cache_api = None
+    print(f"Tile-cache management disabled: {e}")
+
 def init_database():
     """Initialize SQLite database with required tables"""
     conn = sqlite3.connect(DB_PATH)
@@ -1122,9 +1132,19 @@ def log_monitoring_thread():
     print(f"Started {len(greenlets)} log monitoring greenlets using file tailing")
     
     # Periodically send aggregated stats to clients
+    last_load_signal = 0
     while log_monitoring_active:
         socketio.sleep(STATS_PUSH_INTERVAL)
-        
+
+        # Tell the cache worker how loaded the user-facing pools are (it pauses
+        # seeding when users get slow responses)
+        if cache_api and time.time() - last_load_signal >= 30:
+            last_load_signal = time.time()
+            try:
+                cache_api.write_load_signal(response_times)
+            except Exception as e:
+                debug_log(f"cache load signal failed: {e}")
+
         # Calculate stats for different time windows
         stats_update = {}
         for pool in POOL_NAMES:

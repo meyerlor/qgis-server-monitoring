@@ -1,0 +1,28 @@
+{
+  "db_path": "/var/lib/lizmap-cache/cache.db",
+  "php": "/usr/bin/php",
+
+  "instances": [
+    {"name": "markdorf", "lizmap_path": "/var/www/markdorf/lizmap"},
+    {"name": "stockach", "lizmap_path": "/var/www/stockach/lizmap"}
+  ],
+
+  "pools": [
+    {"name": "pool4 (Seeding)", "url": "http://127.0.0.1:7004/ows/", "monitor_pool": "qgis-pool4"},
+    {"name": "pool1", "url": "http://127.0.0.1:7001/ows/"}
+  ],
+  "default_pool": "pool4 (Seeding)",
+
+  "windows": ["20:00-06:00"],
+
+  "load_pause": {
+    "enabled": true,
+    "cpu_percent": 85,
+    "user_p95_ms": 5000,
+    "resume_after_s": 120
+  },
+
+  "inventory_refresh_hours": 24,
+  "size_scan_interval_min": 360,
+  "job_history_days": 30
+}
