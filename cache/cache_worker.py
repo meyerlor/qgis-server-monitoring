@@ -80,6 +80,7 @@ RE_PROGRESS = re.compile(r'^Progression: (\d+)%, (\d+) tiles generated on (\d+) 
 RE_TILE_ERROR = re.compile(r'^Error for tile: ')
 RE_NOT_CACHED = re.compile(r'^Error, tile not cached: ')
 RE_HELPER_ERROR = re.compile(r'^Error: (.*)')
+RE_IDENTITY = re.compile(r'^Seeding (as technical user|anonymously)')
 RE_NOISE = re.compile(r"^The TileMatrixSet '")
 
 
@@ -473,12 +474,14 @@ class SideRunner(threading.Thread):
             return 'failed', 'Test fehlgeschlagen: %s' % e
         if data.get('error'):
             return 'failed', data['error']
+        groups = data.get('seed_groups') or []
+        as_groups = (', als Gruppen %s' % ', '.join(groups)) if groups else ''
         if data.get('ok'):
-            return 'done', 'QGIS Server liefert %s (HTTP %d, %d ms)' % (target, data['code'], data['ms'])
+            return 'done', 'QGIS Server liefert %s (HTTP %d, %d ms%s)' % (target, data['code'], data['ms'], as_groups)
         if data.get('request_error'):
             return 'failed', 'nicht erreichbar: %s' % data['request_error']
-        return 'failed', 'kein gültiges GetCapabilities für %s (HTTP %s, MAP=%s): %s' % (
-            target, data.get('code'), data.get('map'), data.get('snippet') or '')
+        return 'failed', 'kein gültiges GetCapabilities für %s (MAP=%s%s): %s' % (
+            target, data.get('map'), as_groups, data.get('message') or data.get('snippet') or '')
 
     def pool_test_plain(self, conn, jid, url):
         """Without an inventory there is no project to ask for: reachability only."""
@@ -963,10 +966,9 @@ class Worker:
         insts = [cur.row['instance']] if cur.row.get('instance') else [i['name'] for i in self.cfg.instances]
         if not insts:
             raise ValueError('keine Lizmap-Instanz konfiguriert')
-        url, err = self.cfg.pool_url(cur.row.get('pool'))
-        if err:
-            raise ValueError(err)
-        cur.wms_url = url
+        # Always the instance's own QGIS Server: reading the inventory must not
+        # depend on a seeding pool being set up right (the pool test checks that).
+        cur.wms_url = None
         cur.force_caps = bool(cur.row.get('force'))
         for name in insts:
             cur.steps.append({'type': 'env', 'instance': name})
@@ -1018,8 +1020,7 @@ class Worker:
         r = cur.row
         if not self.cfg.instance(r['instance']):
             raise ValueError('Instanz nicht konfiguriert: %s' % r['instance'])
-        url, _ = self.cfg.pool_url(r['pool'])
-        cur.wms_url = url
+        cur.wms_url = None     # deleting files needs no rendering pool
         cur.steps.append({'type': 'clean'})
         self.job_log(cur.id, 'Cache löschen: %s / %s / %s (alle Kachelgitter)' % (r['repository'], r['project'], r['layer']))
 
@@ -1082,6 +1083,12 @@ class Worker:
             cur.output.append(line)
             return
         if not line.strip() or RE_NOISE.match(line):
+            return
+        if RE_IDENTITY.match(line):
+            # printed for every level; once per job is enough
+            if not getattr(cur, 'identity_logged', False):
+                cur.identity_logged = True
+                self.job_log(cur.id, line)
             return
         if st == 'seed':
             m = RE_PROGRESS.match(line)
@@ -1259,10 +1266,12 @@ class Worker:
                     'WHERE instance=? AND repository=? AND project=?',
                     (json.dumps(data), data.get('title'), err, cdb.now_str(), step['qgs_mtime'], step['cfg_mtime']) + key)
             n_tile = len(data.get('tile_layers') or [])
+            groups = data.get('seed_groups') or []
+            as_groups = (' (gelesen als Gruppen: %s)' % ', '.join(groups)) if groups else ''
             if err:
-                self.job_log(cur.id, '%s/%s: %s' % (step['repository'], step['project'], err), 'warn')
+                self.job_log(cur.id, '%s/%s: %s%s' % (step['repository'], step['project'], err, as_groups), 'warn')
             elif n_tile:
-                self.job_log(cur.id, '%s/%s: %d cachefähige Layer' % (step['repository'], step['project'], n_tile))
+                self.job_log(cur.id, '%s/%s: %d cachefähige Layer%s' % (step['repository'], step['project'], n_tile, as_groups))
             self.enqueue_size_scans(*key)
         cur.last_message = None
         done = (self.db('SELECT tiles_done FROM jobs WHERE id = ?', (cur.id,)).fetchone()['tiles_done'] or 0) + 1

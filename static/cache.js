@@ -24,7 +24,11 @@
             cache_instances_title: '🗂️ Lizmap-Instanzen',
             cache_refresh: 'Projekte neu einlesen',
             cache_refresh_full: 'Alle neu analysieren',
-            cache_refresh_full_tip: 'Capabilities aller Projekte neu berechnen, auch unveränderter',
+            cache_refresh_tip: 'Sucht neue und entfernte Projekte und liest nur die Projekte neu, deren .qgs oder .cfg sich seit dem letzten Einlesen geändert hat. Schnell – für den Alltag, z. B. nach dem Hochladen eines Projekts.',
+            cache_refresh_full_tip: 'Liest alle Projekte vollständig neu, auch unveränderte. Sinnvoll nach einem Update von Lizmap oder QGIS Server oder wenn die Anzeige veraltet wirkt. Dauert bei vielen Projekten einige Minuten.',
+            c_refresh_hint_none: 'Erst in den Einstellungen Instanzen auswählen und speichern.',
+            c_refresh_hint_busy: 'Projekte werden gerade eingelesen (Job #{id}) – danach wieder verfügbar.',
+            c_webp_tip: 'Betrifft nur Layer mit dem Bildformat image/webp – PNG und JPEG werden normal gecacht. Lizmap-Versionen ohne den WebP-Cache-Fix (#7232, noch in keinem Release) speichern WebP-Kacheln als JPEG, ohne Transparenz.',
             cache_projects_title: '📁 Projekte',
             cache_search: 'Suchen…',
             cache_only_seedable: 'nur Projekte mit cachefähigen Layern',
@@ -61,7 +65,7 @@
             c_queue: 'Warteschlange', c_queue_val: '{r} aktiv · {q} wartend · {p} pausiert',
             c_no_instances: 'Noch keine Instanz – unten in den Einstellungen „Instanzen suchen“.',
             c_refreshed: 'eingelesen', c_never: 'nie', c_cache: 'Cache', c_webp_ok: 'WebP-Cache ok',
-            c_webp_nofix: 'WebP-Cache-Fix fehlt', c_webp_nogd: 'GD ohne WebP',
+            c_webp_nofix: 'WebP: ab nächstem Lizmap-Release', c_webp_nogd: 'WebP: GD ohne WebP',
             c_tile_layers: '{n} cachefähig', c_schedules_n: '{n} Zeitplan/-pläne', c_no_projects: 'Keine Projekte gefunden',
             c_proj_error: 'Fehler beim Einlesen',
             c_st_not_cached: 'Server-Cache in der .cfg nicht aktiviert – im Lizmap-Plugin beim Layer „Server-Cache“ aktivieren',
@@ -146,7 +150,11 @@
             cache_instances_title: '🗂️ Lizmap instances',
             cache_refresh: 'Rescan projects',
             cache_refresh_full: 'Re-analyse all',
-            cache_refresh_full_tip: 'Recompute the capabilities of all projects, including unchanged ones',
+            cache_refresh_tip: 'Finds new and removed projects and only re-reads projects whose .qgs or .cfg changed since the last scan. Fast – for everyday use, e.g. after uploading a project.',
+            cache_refresh_full_tip: 'Re-reads all projects completely, including unchanged ones. Useful after updating Lizmap or QGIS Server, or when the view looks outdated. Takes a few minutes with many projects.',
+            c_refresh_hint_none: 'Select and save instances in the settings first.',
+            c_refresh_hint_busy: 'Projects are being read right now (job #{id}) – available again afterwards.',
+            c_webp_tip: 'Only affects layers with the image format image/webp – PNG and JPEG are cached normally. Lizmap versions without the WebP cache fix (#7232, not released yet) store WebP tiles as JPEG, without transparency.',
             cache_projects_title: '📁 Projects',
             cache_search: 'Search…',
             cache_only_seedable: 'only projects with cacheable layers',
@@ -170,7 +178,7 @@
             c_queue: 'Queue', c_queue_val: '{r} active · {q} waiting · {p} paused',
             c_no_instances: 'No instance yet – use “Find instances” in the settings below.',
             c_refreshed: 'scanned', c_never: 'never', c_cache: 'Cache', c_webp_ok: 'WebP cache ok',
-            c_webp_nofix: 'WebP cache fix missing', c_webp_nogd: 'GD without WebP',
+            c_webp_nofix: 'WebP: from next Lizmap release', c_webp_nogd: 'WebP: GD without WebP',
             c_tile_layers: '{n} cacheable', c_schedules_n: '{n} schedule(s)', c_no_projects: 'No projects found',
             c_proj_error: 'Scan error',
             c_st_not_cached: 'Server cache not enabled in the .cfg – enable “Server cache” for the layer in the Lizmap plugin',
@@ -451,11 +459,7 @@
             let badges = '';
             if (env.lizmap_version) badges += '<span class="cache-badge">Lizmap ' + esc(env.lizmap_version) + '</span> ';
             if (env.cache_storage_type) badges += '<span class="cache-badge">' + esc(tr('c_cache')) + ': ' + esc(env.cache_storage_type) + '</span> ';
-            if (env.lizmap_version) {
-                badges += env.webp_cache_fix
-                    ? (env.gd_webp ? '<span class="cache-badge green">' + esc(tr('c_webp_ok')) + '</span>' : '<span class="cache-badge amber">' + esc(tr('c_webp_nogd')) + '</span>')
-                    : '<span class="cache-badge amber">' + esc(tr('c_webp_nofix')) + '</span>';
-            }
+            if (env.lizmap_version) badges += webpBadge(env, tr('c_webp_ok'));
             ihtml += '<div class="cache-kv"><span>' + esc(i.name) + '</span><span>' + badges + '</span></div>';
             ihtml += '<div class="cache-muted cache-small" style="margin:-2px 0 6px;">' + esc(tr('c_refreshed')) + ': ' + esc(i.refreshed_at ? fmtTime(i.refreshed_at) : tr('c_never')) + '</div>';
             if (i.error) ihtml += '<div class="cache-warn err">' + esc(i.error) + '</div>';
@@ -464,10 +468,20 @@
         updateRefreshButtons();
     }
 
+    // WebP support is informational: it only matters for layers that use image/webp
+    // (those get a red warning in the layer editor), so neutral grey unless ok
+    function webpBadge(env, okLabel) {
+        const tip = ' title="' + esc(tr('c_webp_tip')) + '"';
+        if (env.webp_cache_fix && env.gd_webp) return '<span class="cache-badge green"' + tip + '>' + esc(okLabel) + '</span>';
+        return '<span class="cache-badge"' + tip + '>' + esc(tr(env.webp_cache_fix ? 'c_webp_nogd' : 'c_webp_nofix')) + '</span>';
+    }
+
     function updateRefreshButtons() {
-        const refreshing = (S.jobs.active || []).some((j) => j.kind === 'refresh');
+        const job = (S.jobs.active || []).find((j) => j.kind === 'refresh');
         const none = !((S.status && S.status.instances) || []).length;
-        ['cache-refresh-btn', 'cache-refresh-full-btn'].forEach((id) => { const b = $(id); if (b) b.disabled = refreshing || none; });
+        ['cache-refresh-btn', 'cache-refresh-full-btn'].forEach((id) => { const b = $(id); if (b) b.disabled = !!job || none; });
+        const hint = $('cache-refresh-hint');
+        if (hint) hint.textContent = none ? tr('c_refresh_hint_none') : (job ? tr('c_refresh_hint_busy', { id: job.id }) : '');
     }
 
     window.cacheRefreshInventory = async function (force) {
@@ -580,9 +594,7 @@
             rows.forEach(({ c, found }) => {
                 const managed = f.instances.some((i) => i.lizmap_path === c.lizmap_path);
                 const env = c.env || {};
-                let webp = '';
-                if (c.env) webp = env.webp_cache_fix ? (env.gd_webp ? '<span class="cache-badge green">ok</span>' : '<span class="cache-badge amber">' + esc(tr('c_webp_nogd')) + '</span>')
-                    : '<span class="cache-badge amber">' + esc(tr('c_webp_nofix')) + '</span>';
+                const webp = c.env ? webpBadge(env, 'ok') : '';
                 h += '<tr class="' + (managed ? '' : 'off') + '"><td><input type="checkbox" data-s="inst" data-path="' + esc(c.lizmap_path) + '" data-name="' + esc(c.name) + '"'
                     + (managed ? ' checked' : '') + (c.error && !managed ? ' disabled' : '') + ' aria-label="' + esc(tr('s_col_manage') + ' ' + c.name) + '"></td>'
                     + '<td><b>' + esc(c.name) + '</b></td>'
