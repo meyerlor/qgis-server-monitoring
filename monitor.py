@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 import threading
 import re
 import os
+import secrets
 from urllib.parse import unquote
 from collections import deque
 from pathlib import Path
@@ -42,12 +43,19 @@ except Exception:
 # =============================================================================
 
 # -- Network / Server --------------------------------------------------------
-# Host and port the dashboard web server listens on
-HOST = '0.0.0.0'
-PORT = 8080
+# Host and port the dashboard web server listens on.
+# Bind to loopback by default: the dashboard is meant to sit behind a reverse
+# proxy (nginx) that handles authentication. Binding 0.0.0.0 would expose it on
+# every interface, letting clients reach it directly and bypass that auth. If
+# you deploy WITHOUT a reverse proxy, override with HOST=0.0.0.0.
+HOST = os.environ.get('MONITORING_HOST', '127.0.0.1')
+PORT = int(os.environ.get('MONITORING_PORT', '8080'))
 
-# Flask secret key (change this to a random string in production)
-SECRET_KEY = 'your-secret-key-change-this'
+# Flask secret key. Never ship a fixed default: a known key lets anyone forge
+# signed session cookies. Taken from the environment, else a random per-boot key
+# (fine here — nothing needs sessions to survive a restart). Set
+# MONITORING_SECRET_KEY in the environment to keep it stable across restarts.
+SECRET_KEY = os.environ.get('MONITORING_SECRET_KEY') or secrets.token_hex(32)
 
 # -- Database ----------------------------------------------------------------
 # Path to the SQLite database file (will be created if it does not exist)
@@ -100,11 +108,6 @@ QGIS_POOLS = {
     },
 }
 
-# -- PHP-FPM -----------------------------------------------------------------
-# Systemd unit and log file for PHP-FPM monitoring
-PHP_FPM_SERVICE_UNIT = 'php8.3-fpm.service'
-PHP_FPM_LOG_FILE = '/var/log/php8.3-fpm.log'
-
 # -- Nginx / Lizmap Web Edits ------------------------------------------------
 # Path to the nginx access log. Lizmap web edits (create/update/delete) are
 # performed by the PHP edition controller writing directly to the database,
@@ -154,10 +157,8 @@ REQUEST_TRACKING_TIMEOUT = 300
 POOL_NAMES = list(QGIS_POOLS.keys())
 
 SERVICE_UNITS = {name: cfg['service_unit'] for name, cfg in QGIS_POOLS.items()}
-SERVICE_UNITS['php-fpm'] = PHP_FPM_SERVICE_UNIT
 
 LOG_FILES_FALLBACK = {name: cfg['log_file'] for name, cfg in QGIS_POOLS.items()}
-LOG_FILES_FALLBACK['php-fpm'] = PHP_FPM_LOG_FILE
 
 def debug_log(message):
     """Write debug message to file"""
@@ -362,11 +363,9 @@ slowest_requests = {pool: [] for pool in POOL_NAMES}
 
 # Statistics storage
 log_stats = {pool: {'requests_total': 0, 'errors': 0, 'warnings': 0} for pool in POOL_NAMES}
-log_stats['php-fpm'] = {'errors': 0, 'warnings': 0}
 
 # Recent errors/warnings
 recent_issues = {pool: deque(maxlen=RECENT_ISSUES_MAXLEN) for pool in POOL_NAMES}
-recent_issues['php-fpm'] = deque(maxlen=RECENT_ISSUES_MAXLEN)
 
 def get_system_metrics():
     """Collect current system metrics"""
@@ -711,24 +710,6 @@ def add_to_slowest(log_name, response_time, timestamp, request_id, details):
     # Sort by response time (descending) and keep top 5
     slowest_requests[log_name].sort(reverse=True, key=lambda x: x[0])
     slowest_requests[log_name] = slowest_requests[log_name][:SLOWEST_REQUESTS_COUNT]
-
-def parse_php_log_line(line, log_name):
-    """Parse a PHP-FPM log line for errors and warnings"""
-    
-    if 'WARNING' in line or 'WARN' in line:
-        log_stats[log_name]['warnings'] += 1
-        recent_issues[log_name].append({
-            'timestamp': datetime.now().strftime('%H:%M:%S'),
-            'level': 'WARNING',
-            'message': line.strip()[:200]
-        })
-    elif 'ERROR' in line or 'CRITICAL' in line or 'Fatal' in line:
-        log_stats[log_name]['errors'] += 1
-        recent_issues[log_name].append({
-            'timestamp': datetime.now().strftime('%H:%M:%S'),
-            'level': 'ERROR',
-            'message': line.strip()[:200]
-        })
 
 # Nginx "combined" log line:
 #   IP - user [ts] "METHOD path HTTP/x" status bytes "referer" "ua"
@@ -1106,44 +1087,35 @@ def log_monitoring_thread():
     print("Starting log monitoring with file tailing...")
     
     greenlets = []
-    
-    # QGIS logs - use file tailing
+
+    def _start_tail(name, path, parser):
+        """Start a file tailer only if the log is actually readable by this
+        process. Distinguishing missing vs unreadable matters when running as a
+        non-root user: an unreadable log is skipped cleanly with a clear message
+        instead of crashing the greenlet."""
+        if not path:
+            return
+        if not os.path.exists(path):
+            debug_log(f"WARNING: Log file not found for {name}: {path}")
+            print(f"Warning: Log file not found for {name}: {path}")
+            return
+        if not os.access(path, os.R_OK):
+            debug_log(f"WARNING: Log not readable for {name} (skipping): {path}")
+            print(f"Warning: Log not readable for {name} (skipping): {path}")
+            return
+        debug_log(f"Starting file tail for {name}: {path}")
+        print(f"Starting file tail for {name}: {path}")
+        greenlets.append(socketio.start_background_task(
+            tail_log_file_fallback, name, path, parser
+        ))
+
+    # QGIS logs
     for pool in POOL_NAMES:
-        if pool in LOG_FILES_FALLBACK and os.path.exists(LOG_FILES_FALLBACK[pool]):
-            debug_log(f"Starting file tail for {pool}: {LOG_FILES_FALLBACK[pool]}")
-            print(f"Starting file tail for {pool}: {LOG_FILES_FALLBACK[pool]}")
-            g = socketio.start_background_task(
-                tail_log_file_fallback,
-                pool, LOG_FILES_FALLBACK[pool], parse_qgis_log_line
-            )
-            greenlets.append(g)
-        else:
-            debug_log(f"WARNING: Log file not found for {pool}")
-            print(f"Warning: Log file not found for {pool}")
-    
-    # PHP-FPM log
-    if 'php-fpm' in LOG_FILES_FALLBACK and os.path.exists(LOG_FILES_FALLBACK['php-fpm']):
-        debug_log(f"Starting file tail for php-fpm: {LOG_FILES_FALLBACK['php-fpm']}")
-        print(f"Starting file tail for php-fpm: {LOG_FILES_FALLBACK['php-fpm']}")
-        g = socketio.start_background_task(
-            tail_log_file_fallback,
-            'php-fpm', LOG_FILES_FALLBACK['php-fpm'], parse_php_log_line
-        )
-        greenlets.append(g)
+        _start_tail(pool, LOG_FILES_FALLBACK.get(pool), parse_qgis_log_line)
 
     # Nginx access log - captures Lizmap web edits (create/update/delete) that
     # never reach the QGIS Server logs.
-    if NGINX_ACCESS_LOG and os.path.exists(NGINX_ACCESS_LOG):
-        debug_log(f"Starting file tail for nginx: {NGINX_ACCESS_LOG}")
-        print(f"Starting file tail for nginx: {NGINX_ACCESS_LOG}")
-        g = socketio.start_background_task(
-            tail_log_file_fallback,
-            'nginx', NGINX_ACCESS_LOG, parse_nginx_log_line
-        )
-        greenlets.append(g)
-    elif NGINX_ACCESS_LOG:
-        debug_log(f"WARNING: Nginx access log not found: {NGINX_ACCESS_LOG}")
-        print(f"Warning: Nginx access log not found: {NGINX_ACCESS_LOG}")
+    _start_tail('nginx', NGINX_ACCESS_LOG, parse_nginx_log_line)
 
     debug_log(f"Started {len(greenlets)} log monitoring greenlets")
     debug_log("LOG MONITORING ACTIVE - Watching for new log entries...")
@@ -1165,13 +1137,7 @@ def log_monitoring_thread():
                 'warnings': log_stats[pool]['warnings'],
                 'total_requests': log_stats[pool]['requests_total']
             }
-        
-        # Add PHP-FPM stats (no response times, just errors/warnings)
-        stats_update['php-fpm'] = {
-            'errors': log_stats['php-fpm']['errors'],
-            'warnings': log_stats['php-fpm']['warnings']
-        }
-        
+
         # Emit to all connected clients
         socketio.emit('stats_update', stats_update, namespace='/monitoring')
         
@@ -1198,8 +1164,8 @@ def get_process_info():
     """Get info about specific processes we care about"""
     processes = []
     
-    # Look for py-qgis-server, nginx, php-fpm processes
-    target_names = ['qgisserver', 'nginx', 'php-fpm']
+    # Look for py-qgis-server and nginx processes
+    target_names = ['qgisserver', 'nginx']
     
     for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'status']):
         try:
@@ -2198,13 +2164,7 @@ def handle_connect():
             'warnings': log_stats[pool]['warnings'],
             'total_requests': log_stats[pool]['requests_total']
         }
-    
-    # Add PHP-FPM stats
-    initial_stats['php-fpm'] = {
-        'errors': log_stats['php-fpm']['errors'],
-        'warnings': log_stats['php-fpm']['warnings']
-    }
-    
+
     emit('stats_update', initial_stats)
     
     # Send initial slowest requests

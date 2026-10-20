@@ -2515,9 +2515,6 @@
         
         function updateResponseTimeCards(stats) {
             for (const [pool, data] of Object.entries(stats)) {
-                // Skip non-pool entries (e.g., php-fpm)
-                if (pool === 'php-fpm') continue;
-
                 // Skip if data structure is incomplete
                 if (!data || !data['10min']) continue;
 
