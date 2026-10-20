@@ -1,0 +1,29 @@
+[Unit]
+Description=Lizmap tile cache worker (QGIS Server Monitoring Dashboard)
+After=network.target
+
+[Service]
+# Run as Lizmap's PHP user so the tiles it writes have the same owner as the
+# ones Lizmap writes itself. NEVER root (the worker refuses to start as root).
+User=www-data
+Group=www-data
+# Shared group with the dashboard user for the cache DB (see README)
+SupplementaryGroups=lizcache
+ExecStart=/usr/bin/python3 /opt/monitoring/cache/cache_worker.py --config /etc/lizmap-cache-worker.json
+Restart=on-failure
+RestartSec=10
+
+# Stay out of the way of the production web traffic
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=20
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=no
+# PrivateTmp must stay off when Lizmap's cacheRootDirectory is /tmp (its default)
+
+[Install]
+WantedBy=multi-user.target

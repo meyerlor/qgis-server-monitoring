@@ -1,0 +1,220 @@
+<!-- Tab: Cache-Verwaltung (tile cache seeding via the separate cache worker) -->
+<style>
+    /* the dashboard styles every input/select globally (min-width 200px, big padding) */
+    #tab-cache input[type=checkbox] { min-width: 0; width: 15px; height: 15px; padding: 0; margin: 0; accent-color: #3b82f6; flex-shrink: 0; }
+    #tab-cache .cache-input, #tab-cache .cache-select { min-width: 0; border-width: 1px; }
+    .cache-muted { color: #94a3b8; }
+    .cache-small { font-size: 0.85em; }
+    .cache-status-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 20px; }
+    .cache-status-row .card h2 { font-size: 1.1em; }
+    .cache-kv { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #334155; font-size: 0.92em; }
+    .cache-kv:last-child { border-bottom: none; }
+    .cache-kv span:first-child { color: #94a3b8; }
+    .cache-kv span:last-child { text-align: right; overflow-wrap: anywhere; }
+    .cache-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .cache-dot.on { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+    .cache-dot.off { background: #ef4444; }
+    .cache-dot.paused { background: #f59e0b; }
+    .cache-layout { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 20px; margin-bottom: 20px; align-items: start; }
+    @media (max-width: 1100px) { .cache-layout { grid-template-columns: 1fr; } }
+    .cache-bottom { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; }
+    @media (max-width: 1300px) { .cache-bottom { grid-template-columns: 1fr; } }
+    .cache-input, .cache-select {
+        background: #0f172a; color: #e2e8f0; border: 1px solid #475569; border-radius: 6px;
+        padding: 6px 8px; font-size: 0.9em; font-family: inherit;
+    }
+    .cache-input:focus, .cache-select:focus { outline: 2px solid #60a5fa; outline-offset: 1px; }
+    .cache-select:disabled, .cache-input:disabled { opacity: 0.55; cursor: not-allowed; }
+    .cache-btn {
+        background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 6px;
+        padding: 6px 12px; cursor: pointer; font-size: 0.88em; font-weight: 600; white-space: nowrap;
+    }
+    .cache-btn:hover:not(:disabled) { background: #475569; }
+    .cache-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .cache-btn.primary { background: #2563eb; border-color: #3b82f6; }
+    .cache-btn.primary:hover:not(:disabled) { background: #3b82f6; }
+    .cache-btn.danger { background: #7f1d1d; border-color: #b91c1c; }
+    .cache-btn.danger:hover:not(:disabled) { background: #991b1b; }
+    .cache-btn.icon { padding: 3px 8px; }
+    .cache-proj-list { max-height: 640px; overflow-y: auto; margin-top: 10px; }
+    .cache-proj-group { color: #64748b; font-size: 0.78em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin: 12px 4px 4px; }
+    .cache-proj-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+    .cache-proj-item:hover { background: #334155; }
+    .cache-proj-item.active { background: #334155; border-color: #60a5fa; }
+    .cache-proj-item .t { font-weight: 600; overflow-wrap: anywhere; }
+    .cache-proj-item .m { color: #94a3b8; font-size: 0.8em; margin-top: 2px; }
+    .cache-proj-item.dim .t { color: #64748b; }
+    .cache-tree { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+    .cache-tree th { text-align: left; color: #94a3b8; font-weight: 600; padding: 8px 6px; border-bottom: 2px solid #334155; white-space: nowrap; }
+    .cache-tree td { padding: 7px 6px; border-bottom: 1px solid #1e293b; vertical-align: middle; }
+    .cache-tree tr.row { cursor: default; }
+    .cache-tree tr.row.seedable { cursor: pointer; }
+    .cache-tree tr.row.seedable:hover td { background: #243247; }
+    .cache-tree tr.row.open td { background: #243247; }
+    .cache-tree tr.row.dim td { color: #64748b; }
+    .cache-tree tr.group td { color: #cbd5e1; font-weight: 700; background: #172033; }
+    .cache-caret { display: inline-block; width: 14px; color: #64748b; }
+    .cache-hint { color: #64748b; font-size: 0.85em; font-style: italic; }
+    .cache-badge { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 0.78em; font-weight: 600; background: #334155; color: #cbd5e1; white-space: nowrap; }
+    .cache-badge.green { background: #14532d; color: #86efac; }
+    .cache-badge.amber { background: #713f12; color: #fcd34d; }
+    .cache-badge.red { background: #7f1d1d; color: #fca5a5; }
+    .cache-badge.blue { background: #1e3a8a; color: #93c5fd; }
+    .cache-levels { display: inline-flex; gap: 2px; align-items: center; flex-wrap: wrap; }
+    .cache-lv { width: 15px; height: 18px; border-radius: 3px; background: #334155; font-size: 9px; line-height: 18px; text-align: center; color: #cbd5e1; font-weight: 700; }
+    .cache-lv.seeded, .cache-lv.expired, .cache-lv.errors { color: #0f172a; }
+    .cache-lv.active { color: #e2e8f0; }
+    .cache-lv.seeded { background: #22c55e; }
+    .cache-lv.expired { background: #f59e0b; }
+    .cache-lv.errors { background: repeating-linear-gradient(45deg, #22c55e, #22c55e 3px, #ef4444 3px, #ef4444 6px); }
+    .cache-lv.active { background: repeating-linear-gradient(45deg, #3b82f6, #3b82f6 3px, #1e3a8a 3px, #1e3a8a 6px); }
+    .cache-lv.sel { outline: 2px solid #e2e8f0; outline-offset: 1px; }
+    .cache-legend { display: flex; gap: 14px; flex-wrap: wrap; color: #94a3b8; font-size: 0.8em; align-items: center; }
+    .cache-legend .cache-lv { display: inline-block; vertical-align: middle; margin-right: 4px; }
+    .cache-editor td { background: #111a2b; padding: 16px 14px 18px 30px; }
+    .cache-editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 18px; margin-bottom: 12px; }
+    .cache-field label { display: block; color: #94a3b8; font-size: 0.8em; font-weight: 600; margin-bottom: 4px; }
+    .cache-field .cache-input, .cache-field .cache-select { width: 100%; }
+    .cache-field .sub { color: #64748b; font-size: 0.78em; margin-top: 3px; }
+    .cache-check { display: inline-flex; align-items: center; gap: 6px; color: #cbd5e1; font-size: 0.88em; cursor: pointer; margin-right: 18px; }
+    .cache-estimate { margin: 10px 0 12px; padding: 8px 12px; border-left: 3px solid #3b82f6; background: #0f172a; border-radius: 4px; font-size: 0.9em; }
+    .cache-warn { margin: 8px 0; padding: 8px 12px; border-left: 3px solid #f59e0b; background: #2a2210; border-radius: 4px; font-size: 0.88em; color: #fde68a; }
+    .cache-warn.err { border-color: #ef4444; background: #2a1414; color: #fecaca; }
+    .cache-info { margin: 8px 0; padding: 8px 12px; border-left: 3px solid #64748b; background: #0f172a; border-radius: 4px; font-size: 0.85em; color: #94a3b8; }
+    .cache-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .cache-section-title { color: #60a5fa; font-weight: 700; font-size: 0.92em; margin: 18px 0 8px; padding-top: 12px; border-top: 1px solid #334155; }
+    .cache-jobs { width: 100%; border-collapse: collapse; font-size: 0.86em; }
+    .cache-jobs th { text-align: left; color: #94a3b8; font-weight: 600; padding: 6px; border-bottom: 2px solid #334155; white-space: nowrap; }
+    .cache-jobs td { padding: 6px; border-bottom: 1px solid #334155; vertical-align: middle; }
+    .cache-jobs tr.sel td { background: #243247; }
+    .cache-jobs tr { cursor: pointer; }
+    .cache-pbar { width: 110px; height: 8px; background: #0f172a; border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
+    .cache-pbar > div { height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); }
+    .cache-pbar.paused > div { background: #f59e0b; }
+    .cache-log { background: #0b1220; border: 1px solid #334155; border-radius: 6px; height: 420px; overflow-y: auto;
+                 font-family: Consolas, 'Courier New', monospace; font-size: 0.8em; padding: 8px 10px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .cache-log .ln { color: #cbd5e1; }
+    .cache-log .ln .ts { color: #475569; margin-right: 8px; }
+    .cache-log .ln.warn { color: #fcd34d; }
+    .cache-log .ln.error { color: #fca5a5; }
+    .cache-log .ln.step { color: #93c5fd; font-weight: 700; }
+    .cache-toast { position: fixed; right: 24px; bottom: 24px; max-width: 460px; padding: 12px 16px; border-radius: 8px;
+                   background: #1e293b; border: 1px solid #475569; box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 1000; font-size: 0.9em; }
+    .cache-toast.err { border-color: #ef4444; }
+    .cache-toast.ok { border-color: #22c55e; }
+</style>
+
+<div id="tab-cache" class="tab-content">
+    <div id="cache-unavailable" class="card" style="display:none; margin-bottom:20px;">
+        <h2 data-i18n="cache_unavailable_title">Cache-Verwaltung nicht eingerichtet</h2>
+        <p class="cache-muted" id="cache-unavailable-reason" style="margin-bottom:10px;"></p>
+        <p class="cache-muted cache-small" data-i18n-html="cache_unavailable_help">
+            Der Cache-Worker läuft als eigener Dienst unter dem PHP-Benutzer von Lizmap (z.&nbsp;B. <code>www-data</code>).
+            Einrichtung: siehe Abschnitt „Tile-Cache-Verwaltung“ in der README.
+        </p>
+    </div>
+
+    <div id="cache-main" style="display:none;">
+        <div class="cache-status-row">
+            <div class="card">
+                <h2 data-i18n="cache_worker_title">⚙️ Cache-Worker</h2>
+                <div id="cache-worker-box"></div>
+            </div>
+            <div class="card">
+                <h2 data-i18n="cache_load_title">🛡️ Betriebsschutz</h2>
+                <div id="cache-load-box"></div>
+            </div>
+            <div class="card">
+                <h2 data-i18n="cache_instances_title">🗂️ Lizmap-Instanzen</h2>
+                <div id="cache-instances-box"></div>
+                <div class="cache-actions" style="margin-top:12px;">
+                    <button class="cache-btn" id="cache-refresh-btn" onclick="cacheRefreshInventory(false)" data-i18n="cache_refresh">Projekte neu einlesen</button>
+                    <button class="cache-btn" onclick="cacheRefreshInventory(true)" data-i18n="cache_refresh_full" data-i18n-title="cache_refresh_full_tip">Alle neu analysieren</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="cache-layout">
+            <div class="card">
+                <h2 data-i18n="cache_projects_title">📁 Projekte</h2>
+                <input type="search" class="cache-input" id="cache-proj-search" style="width:100%;" data-i18n-placeholder="cache_search" placeholder="Suchen…" oninput="cacheRenderProjects()">
+                <label class="cache-check" style="margin-top:8px;">
+                    <input type="checkbox" id="cache-only-seedable" checked onchange="cacheRenderProjects()">
+                    <span data-i18n="cache_only_seedable">nur Projekte mit cachefähigen Layern</span>
+                </label>
+                <div class="cache-proj-list" id="cache-proj-list"></div>
+            </div>
+            <div class="card" id="cache-project-card">
+                <div id="cache-project-empty" class="no-data" data-i18n="cache_pick_project">Projekt links auswählen</div>
+                <div id="cache-project" style="display:none;">
+                    <div style="display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px; align-items:flex-start;">
+                        <div>
+                            <h2 id="cache-project-title" style="margin-bottom:4px;"></h2>
+                            <div class="cache-muted cache-small" id="cache-project-meta"></div>
+                        </div>
+                        <div class="cache-actions">
+                            <label class="cache-muted cache-small" for="cache-view-tms" data-i18n="cache_view_tms">Kachelgitter</label>
+                            <select class="cache-select" id="cache-view-tms" onchange="cacheSetViewTms(this.value)"></select>
+                        </div>
+                    </div>
+                    <div id="cache-project-warnings"></div>
+                    <div class="cache-legend" style="margin:12px 0 6px;">
+                        <span><span class="cache-lv seeded"></span><span data-i18n="cache_lg_seeded">geseedet</span></span>
+                        <span><span class="cache-lv expired"></span><span data-i18n="cache_lg_expired">abgelaufen (TTL)</span></span>
+                        <span><span class="cache-lv errors"></span><span data-i18n="cache_lg_errors">mit Fehlern</span></span>
+                        <span><span class="cache-lv active"></span><span data-i18n="cache_lg_active">in Arbeit / Warteschlange</span></span>
+                        <span><span class="cache-lv"></span><span data-i18n="cache_lg_none">nicht geseedet</span></span>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="cache-tree">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="cache_col_layer">Layer</th>
+                                    <th data-i18n="cache_col_format">Format</th>
+                                    <th data-i18n="cache_col_ttl">Ablauf</th>
+                                    <th data-i18n="cache_col_levels">Stufen</th>
+                                    <th data-i18n="cache_col_size">Größe</th>
+                                    <th data-i18n="cache_col_schedule">Zeitplan</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cache-tree-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="cache-bottom">
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+                    <h2 style="margin:0;" data-i18n="cache_queue_title">📋 Warteschlange</h2>
+                    <label class="cache-check" style="margin:0;"><input type="checkbox" id="cache-show-recent" checked onchange="cacheRenderJobs()"><span data-i18n="cache_show_recent">Verlauf anzeigen</span></label>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="cache-jobs">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th data-i18n="cache_col_target">Ziel</th>
+                                <th data-i18n="cache_col_levels">Stufen</th>
+                                <th data-i18n="cache_col_status">Status</th>
+                                <th data-i18n="cache_col_progress">Fortschritt</th>
+                                <th data-i18n="cache_col_by">von</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="cache-jobs-body"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+                    <h2 style="margin:0;" data-i18n="cache_log_title">📜 Live-Protokoll</h2>
+                    <label class="cache-check" style="margin:0;"><input type="checkbox" id="cache-log-follow" checked><span data-i18n="cache_log_follow">automatisch scrollen</span></label>
+                </div>
+                <div class="cache-muted cache-small" id="cache-log-head" style="margin-bottom:6px;"></div>
+                <div class="cache-log" id="cache-log" role="log" aria-live="polite"></div>
+            </div>
+        </div>
+    </div>
+</div>

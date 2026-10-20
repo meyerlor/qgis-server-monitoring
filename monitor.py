@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 import threading
 import re
 import os
+import secrets
 from urllib.parse import unquote
 from collections import deque
 from pathlib import Path
@@ -42,12 +43,19 @@ except Exception:
 # =============================================================================
 
 # -- Network / Server --------------------------------------------------------
-# Host and port the dashboard web server listens on
-HOST = '0.0.0.0'
-PORT = 8080
+# Host and port the dashboard web server listens on.
+# Bind to loopback by default: the dashboard is meant to sit behind a reverse
+# proxy (nginx) that handles authentication. Binding 0.0.0.0 would expose it on
+# every interface, letting clients reach it directly and bypass that auth. If
+# you deploy WITHOUT a reverse proxy, override with HOST=0.0.0.0.
+HOST = os.environ.get('MONITORING_HOST', '127.0.0.1')
+PORT = int(os.environ.get('MONITORING_PORT', '8080'))
 
-# Flask secret key (change this to a random string in production)
-SECRET_KEY = 'your-secret-key-change-this'
+# Flask secret key. Never ship a fixed default: a known key lets anyone forge
+# signed session cookies. Taken from the environment, else a random per-boot key
+# (fine here — nothing needs sessions to survive a restart). Set
+# MONITORING_SECRET_KEY in the environment to keep it stable across restarts.
+SECRET_KEY = os.environ.get('MONITORING_SECRET_KEY') or secrets.token_hex(32)
 
 # -- Database ----------------------------------------------------------------
 # Path to the SQLite database file (will be created if it does not exist)
@@ -59,6 +67,15 @@ REQUEST_RETENTION_DAYS = 180
 
 # How long to keep system metrics in the database (in days)
 SYSTEM_METRICS_RETENTION_DAYS = 30
+
+# -- Usage Log Paging --------------------------------------------------------
+# The Nutzungsprotokoll detail table is rendered in the browser, so one API
+# response only carries this many rows; the dashboard pages backwards through
+# the selected time range on demand. Raise it for a faster-but-heavier table.
+USAGE_LOG_PAGE_SIZE = 2000
+
+# Hard ceiling for a client-supplied ?limit= on /api/usage/log
+USAGE_LOG_MAX_PAGE_SIZE = 20000
 
 # -- Debug Logging -----------------------------------------------------------
 # Path to the debug log file, or None to disable.
@@ -90,11 +107,6 @@ QGIS_POOLS = {
         'log_file': '/var/log/qgis/qgis-server-pool3.log',
     },
 }
-
-# -- PHP-FPM -----------------------------------------------------------------
-# Systemd unit and log file for PHP-FPM monitoring
-PHP_FPM_SERVICE_UNIT = 'php8.3-fpm.service'
-PHP_FPM_LOG_FILE = '/var/log/php8.3-fpm.log'
 
 # -- Nginx / Lizmap Web Edits ------------------------------------------------
 # Path to the nginx access log. Lizmap web edits (create/update/delete) are
@@ -145,10 +157,8 @@ REQUEST_TRACKING_TIMEOUT = 300
 POOL_NAMES = list(QGIS_POOLS.keys())
 
 SERVICE_UNITS = {name: cfg['service_unit'] for name, cfg in QGIS_POOLS.items()}
-SERVICE_UNITS['php-fpm'] = PHP_FPM_SERVICE_UNIT
 
 LOG_FILES_FALLBACK = {name: cfg['log_file'] for name, cfg in QGIS_POOLS.items()}
-LOG_FILES_FALLBACK['php-fpm'] = PHP_FPM_LOG_FILE
 
 def debug_log(message):
     """Write debug message to file"""
@@ -165,6 +175,16 @@ def debug_log(message):
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
+# Tile-cache management (optional): the dashboard only reads/writes the shared
+# cache DB; jobs run in the separate cache worker (cache/cache_worker.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache'))
+try:
+    import cache_api
+    app.register_blueprint(cache_api.bp)
+except ImportError as e:
+    cache_api = None
+    print(f"Tile-cache management disabled: {e}")
 
 def init_database():
     """Initialize SQLite database with required tables"""
@@ -353,11 +373,9 @@ slowest_requests = {pool: [] for pool in POOL_NAMES}
 
 # Statistics storage
 log_stats = {pool: {'requests_total': 0, 'errors': 0, 'warnings': 0} for pool in POOL_NAMES}
-log_stats['php-fpm'] = {'errors': 0, 'warnings': 0}
 
 # Recent errors/warnings
 recent_issues = {pool: deque(maxlen=RECENT_ISSUES_MAXLEN) for pool in POOL_NAMES}
-recent_issues['php-fpm'] = deque(maxlen=RECENT_ISSUES_MAXLEN)
 
 def get_system_metrics():
     """Collect current system metrics"""
@@ -702,24 +720,6 @@ def add_to_slowest(log_name, response_time, timestamp, request_id, details):
     # Sort by response time (descending) and keep top 5
     slowest_requests[log_name].sort(reverse=True, key=lambda x: x[0])
     slowest_requests[log_name] = slowest_requests[log_name][:SLOWEST_REQUESTS_COUNT]
-
-def parse_php_log_line(line, log_name):
-    """Parse a PHP-FPM log line for errors and warnings"""
-    
-    if 'WARNING' in line or 'WARN' in line:
-        log_stats[log_name]['warnings'] += 1
-        recent_issues[log_name].append({
-            'timestamp': datetime.now().strftime('%H:%M:%S'),
-            'level': 'WARNING',
-            'message': line.strip()[:200]
-        })
-    elif 'ERROR' in line or 'CRITICAL' in line or 'Fatal' in line:
-        log_stats[log_name]['errors'] += 1
-        recent_issues[log_name].append({
-            'timestamp': datetime.now().strftime('%H:%M:%S'),
-            'level': 'ERROR',
-            'message': line.strip()[:200]
-        })
 
 # Nginx "combined" log line:
 #   IP - user [ts] "METHOD path HTTP/x" status bytes "referer" "ua"
@@ -1097,53 +1097,54 @@ def log_monitoring_thread():
     print("Starting log monitoring with file tailing...")
     
     greenlets = []
-    
-    # QGIS logs - use file tailing
+
+    def _start_tail(name, path, parser):
+        """Start a file tailer only if the log is actually readable by this
+        process. Distinguishing missing vs unreadable matters when running as a
+        non-root user: an unreadable log is skipped cleanly with a clear message
+        instead of crashing the greenlet."""
+        if not path:
+            return
+        if not os.path.exists(path):
+            debug_log(f"WARNING: Log file not found for {name}: {path}")
+            print(f"Warning: Log file not found for {name}: {path}")
+            return
+        if not os.access(path, os.R_OK):
+            debug_log(f"WARNING: Log not readable for {name} (skipping): {path}")
+            print(f"Warning: Log not readable for {name} (skipping): {path}")
+            return
+        debug_log(f"Starting file tail for {name}: {path}")
+        print(f"Starting file tail for {name}: {path}")
+        greenlets.append(socketio.start_background_task(
+            tail_log_file_fallback, name, path, parser
+        ))
+
+    # QGIS logs
     for pool in POOL_NAMES:
-        if pool in LOG_FILES_FALLBACK and os.path.exists(LOG_FILES_FALLBACK[pool]):
-            debug_log(f"Starting file tail for {pool}: {LOG_FILES_FALLBACK[pool]}")
-            print(f"Starting file tail for {pool}: {LOG_FILES_FALLBACK[pool]}")
-            g = socketio.start_background_task(
-                tail_log_file_fallback,
-                pool, LOG_FILES_FALLBACK[pool], parse_qgis_log_line
-            )
-            greenlets.append(g)
-        else:
-            debug_log(f"WARNING: Log file not found for {pool}")
-            print(f"Warning: Log file not found for {pool}")
-    
-    # PHP-FPM log
-    if 'php-fpm' in LOG_FILES_FALLBACK and os.path.exists(LOG_FILES_FALLBACK['php-fpm']):
-        debug_log(f"Starting file tail for php-fpm: {LOG_FILES_FALLBACK['php-fpm']}")
-        print(f"Starting file tail for php-fpm: {LOG_FILES_FALLBACK['php-fpm']}")
-        g = socketio.start_background_task(
-            tail_log_file_fallback,
-            'php-fpm', LOG_FILES_FALLBACK['php-fpm'], parse_php_log_line
-        )
-        greenlets.append(g)
+        _start_tail(pool, LOG_FILES_FALLBACK.get(pool), parse_qgis_log_line)
 
     # Nginx access log - captures Lizmap web edits (create/update/delete) that
     # never reach the QGIS Server logs.
-    if NGINX_ACCESS_LOG and os.path.exists(NGINX_ACCESS_LOG):
-        debug_log(f"Starting file tail for nginx: {NGINX_ACCESS_LOG}")
-        print(f"Starting file tail for nginx: {NGINX_ACCESS_LOG}")
-        g = socketio.start_background_task(
-            tail_log_file_fallback,
-            'nginx', NGINX_ACCESS_LOG, parse_nginx_log_line
-        )
-        greenlets.append(g)
-    elif NGINX_ACCESS_LOG:
-        debug_log(f"WARNING: Nginx access log not found: {NGINX_ACCESS_LOG}")
-        print(f"Warning: Nginx access log not found: {NGINX_ACCESS_LOG}")
+    _start_tail('nginx', NGINX_ACCESS_LOG, parse_nginx_log_line)
 
     debug_log(f"Started {len(greenlets)} log monitoring greenlets")
     debug_log("LOG MONITORING ACTIVE - Watching for new log entries...")
     print(f"Started {len(greenlets)} log monitoring greenlets using file tailing")
     
     # Periodically send aggregated stats to clients
+    last_load_signal = 0
     while log_monitoring_active:
         socketio.sleep(STATS_PUSH_INTERVAL)
-        
+
+        # Tell the cache worker how loaded the user-facing pools are (it pauses
+        # seeding when users get slow responses)
+        if cache_api and time.time() - last_load_signal >= 30:
+            last_load_signal = time.time()
+            try:
+                cache_api.write_load_signal(response_times)
+            except Exception as e:
+                debug_log(f"cache load signal failed: {e}")
+
         # Calculate stats for different time windows
         stats_update = {}
         for pool in POOL_NAMES:
@@ -1156,13 +1157,7 @@ def log_monitoring_thread():
                 'warnings': log_stats[pool]['warnings'],
                 'total_requests': log_stats[pool]['requests_total']
             }
-        
-        # Add PHP-FPM stats (no response times, just errors/warnings)
-        stats_update['php-fpm'] = {
-            'errors': log_stats['php-fpm']['errors'],
-            'warnings': log_stats['php-fpm']['warnings']
-        }
-        
+
         # Emit to all connected clients
         socketio.emit('stats_update', stats_update, namespace='/monitoring')
         
@@ -1189,8 +1184,8 @@ def get_process_info():
     """Get info about specific processes we care about"""
     processes = []
     
-    # Look for py-qgis-server, nginx, php-fpm processes
-    target_names = ['qgisserver', 'nginx', 'php-fpm']
+    # Look for py-qgis-server and nginx processes
+    target_names = ['qgisserver', 'nginx']
     
     for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'status']):
         try:
@@ -1262,6 +1257,13 @@ def cleanup_thread():
         except Exception as e:
             print(f"Error in cleanup thread: {e}")
             socketio.sleep(3600)  # Wait 1 hour on error
+
+def clamp_int(value, default, minimum, maximum):
+    """Parse an int query param, falling back to default and clamping to range."""
+    try:
+        return max(minimum, min(int(value), maximum))
+    except (TypeError, ValueError):
+        return default
 
 def build_user_filter():
     """Build SQL filter clause based on include_admin / include_anonymous query params."""
@@ -1956,13 +1958,26 @@ def get_ausreisser():
 
 @app.route('/api/usage/log')
 def get_usage_log():
-    """Nutzungsprotokoll: filtered entries from usage_log"""
+    """Nutzungsprotokoll: filtered entries from usage_log, paginated.
+
+    Returns {'entries': [...], 'total': n, 'offset': n, 'limit': n, 'has_more': bool}.
+
+    The detail table is rendered client-side, so one response is capped at
+    ``limit`` rows and the dashboard pages backwards through the selected time
+    range with ``offset``. Without paging, a busy server logs more rows per day
+    than a single response can carry, so the table silently stopped a few hours
+    back no matter which time range was selected.
+    """
     try:
         days = int(request.args.get('days', 7))
         req_type = request.args.get('request_type', 'all')
+        # Type checkboxes of the detail log, as CSV. Empty = no restriction.
+        types = [t.strip() for t in request.args.get('types', '').split(',') if t.strip()]
         user = request.args.get('user', 'all')
         project = request.args.get('project', 'all')
         pool = request.args.get('pool', 'all')
+        limit = clamp_int(request.args.get('limit'), USAGE_LOG_PAGE_SIZE, 1, USAGE_LOG_MAX_PAGE_SIZE)
+        offset = clamp_int(request.args.get('offset'), 0, 0, 10000000)
         user_filter = build_user_filter()
 
         conn = sqlite3.connect(DB_PATH)
@@ -1974,30 +1989,38 @@ def get_usage_log():
         else:
             cutoff = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
 
+        clauses = ['timestamp >= ?', "request_type NOT IN ('GETMAP', 'GETFEATURE')"]
         params = [cutoff]
-        query = f'''
-            SELECT id, timestamp, pool, project, user, layers, template, request_type, action, response_time_ms, request_id
-            FROM usage_log
-            WHERE timestamp >= ?
-            AND request_type NOT IN ('GETMAP', 'GETFEATURE')
-            {user_filter}
-        '''
 
         if req_type != 'all':
-            query += ' AND request_type = ?'
+            clauses.append('request_type = ?')
             params.append(req_type)
+        if types:
+            placeholders = ','.join('?' * len(types))
+            clauses.append(f'request_type IN ({placeholders})')
+            params.extend(types)
         if user != 'all':
-            query += ' AND user = ?'
+            clauses.append('user = ?')
             params.append(user)
         if project != 'all':
-            query += ' AND project = ?'
+            clauses.append('project = ?')
             params.append(project)
         if pool != 'all':
-            query += ' AND pool = ?'
+            clauses.append('pool = ?')
             params.append(pool)
 
-        query += ' ORDER BY timestamp DESC LIMIT 2000'
-        cursor.execute(query, params)
+        where = 'WHERE ' + ' AND '.join(clauses) + user_filter
+
+        cursor.execute(f'SELECT COUNT(*) FROM usage_log {where}', params)
+        total = cursor.fetchone()[0]
+
+        cursor.execute(f'''
+            SELECT id, timestamp, pool, project, user, layers, template, request_type, action, response_time_ms, request_id
+            FROM usage_log
+            {where}
+            ORDER BY timestamp DESC
+            LIMIT ? OFFSET ?
+        ''', params + [limit, offset])
         rows = cursor.fetchall()
         conn.close()
 
@@ -2014,10 +2037,16 @@ def get_usage_log():
             'response_time_ms': row['response_time_ms'],
             'request_id':      row['request_id'] or ''
         } for row in rows]
-        return jsonify(result)
+        return jsonify({
+            'entries':  result,
+            'total':    total,
+            'offset':   offset,
+            'limit':    limit,
+            'has_more': offset + len(result) < total,
+        })
     except Exception as e:
         print(f"Error fetching usage log: {e}")
-        return jsonify([]), 500
+        return jsonify({'entries': [], 'total': 0, 'offset': 0, 'limit': 0, 'has_more': False}), 500
 
 
 @app.route('/api/usage/summary')
@@ -2155,13 +2184,7 @@ def handle_connect():
             'warnings': log_stats[pool]['warnings'],
             'total_requests': log_stats[pool]['requests_total']
         }
-    
-    # Add PHP-FPM stats
-    initial_stats['php-fpm'] = {
-        'errors': log_stats['php-fpm']['errors'],
-        'warnings': log_stats['php-fpm']['warnings']
-    }
-    
+
     emit('stats_update', initial_stats)
     
     # Send initial slowest requests
