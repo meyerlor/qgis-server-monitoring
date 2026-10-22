@@ -30,6 +30,10 @@
  * Copyright (c) 2025 meyerlor - MIT License (see LICENSE)
  */
 
+// Bumped when the capabilities output changes meaning; the worker re-reads
+// projects whose stored capabilities come from an older helper.
+const CAPS_VERSION = 2;
+
 const EXIT_OK = 0;
 const EXIT_USAGE = 2;
 const EXIT_ERROR = 1;
@@ -273,6 +277,34 @@ function has_webp_cache_fix()
     }
 }
 
+/**
+ * Whether this Lizmap names a layer's file-cache directory after sha1(layer)
+ * (lizmap-web-client commit 7b540be8 "use sha1 to prevent long file/dir name
+ * in cache path", master since 2026-09, not in 3.8/3.9/3.10 releases) or after
+ * the layer name itself (all released versions). Detected from the instance's
+ * own Proxy::clearLayerCache(), which matches the directories it has to delete.
+ */
+function cache_dirs_hashed()
+{
+    static $hashed = null;
+    if ($hashed === null) {
+        try {
+            $file = (new \ReflectionClass('\Lizmap\Request\Proxy'))->getFileName();
+            $hashed = $file && strpos((string) file_get_contents($file), 'sha1($layer)') !== false;
+        } catch (\Throwable $e) {
+            $hashed = false;
+        }
+    }
+
+    return $hashed;
+}
+
+/** File-cache directory of one layer below <cacheRoot>/<repo>/<project>/ (before the CRS dir). */
+function layer_cache_dir($layerName)
+{
+    return cache_dirs_hashed() ? sha1($layerName) : $layerName;
+}
+
 function load_project($repoKey, $projectKey)
 {
     global $seederContext;
@@ -470,6 +502,7 @@ try {
                 'gd' => !empty($gd),
                 'gd_webp' => !empty($gd['WebP Support']),
                 'webp_cache_fix' => has_webp_cache_fix(),
+                'cache_dirs' => cache_dirs_hashed() ? 'sha1' : 'layer_name',
                 'repositories' => count(\lizmap::getRepositoryList()),
             ));
 
@@ -579,8 +612,8 @@ try {
                         'id' => $tl->id,
                         'title' => $tl->title,
                         'image_format' => $tl->imageFormat,
-                        // Lizmap's file cache directory name for this layer
-                        'cache_dir' => sha1($tl->name),
+                        // Lizmap's file cache directory name for this layer (naming differs by version)
+                        'cache_dir' => layer_cache_dir($tl->name),
                         'tile_matrix_sets' => $links,
                     );
                 }
@@ -598,6 +631,7 @@ try {
                 'tile_matrix_sets' => $tmsList,
                 'tile_layers' => $tileLayers,
                 'seed_groups' => $seederContext->seederGroups,
+                'caps_version' => CAPS_VERSION,
                 'error' => $capsError,
             ));
 

@@ -68,6 +68,7 @@ FILE_DEFAULTS = {
 }
 SIDE_KINDS = ('discover', 'pool_test')   # run in the side thread, never queued behind seeding
 
+CAPS_VERSION = 2                # = CAPS_VERSION of lizmap_cache_helper.php; older stored caps are re-read
 MAX_LOGGED_TILE_ERRORS = 50     # per level; further errors are only counted
 EARLY_ABORT_ERRORS = 200        # abort a level that fails (almost) every tile
 
@@ -86,6 +87,14 @@ RE_NOISE = re.compile(r"^The TileMatrixSet '")
 
 def log(msg):
     print('[%s] %s' % (cdb.now_str(), msg), flush=True)
+
+
+def caps_version(caps_json):
+    """Helper version that produced stored capabilities (0 = before versioning)."""
+    try:
+        return int(json.loads(caps_json or '{}').get('caps_version') or 0)
+    except (ValueError, TypeError, AttributeError):
+        return 0
 
 
 # ---------------------------------------------------------------------------
@@ -1238,7 +1247,8 @@ class Worker:
                             'repo_label=excluded.repo_label, qgs_path=excluded.qgs_path',
                             (inst, repo['key'], p['key'], repo.get('label'), p['qgs_path'], p['qgs_mtime'], p['cfg_mtime']))
                     changed = (not old or old['caps_json'] is None or old['error']
-                               or old['qgs_mtime'] != p['qgs_mtime'] or old['cfg_mtime'] != p['cfg_mtime'])
+                               or old['qgs_mtime'] != p['qgs_mtime'] or old['cfg_mtime'] != p['cfg_mtime']
+                               or caps_version(old['caps_json']) < CAPS_VERSION)
                     if changed or cur.force_caps:
                         cur.steps.append({'type': 'caps', 'instance': inst, 'repository': repo['key'],
                                           'project': p['key'], 'qgs_mtime': p['qgs_mtime'], 'cfg_mtime': p['cfg_mtime']})
