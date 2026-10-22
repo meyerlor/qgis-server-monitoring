@@ -126,7 +126,8 @@
             s_pools_help: 'Optional: Kachelanfragen beim Seeding an einen eigenen QGIS-Server-Pool schicken, damit die Pools der Nutzer frei bleiben. Ohne Pool nutzt jede Instanz ihren eigenen QGIS Server.',
             s_col_url: 'URL', s_col_monitor: 'Dashboard-Pool',
             s_col_monitor_tip: 'Derselbe Pool im Dashboard – seine Last zählt dann nicht als Nutzerlast (sonst bremst sich das Seeding selbst aus)',
-            s_col_default: 'Standard', s_col_test: 'Test',
+            s_col_default: 'Standard', s_col_test: 'Test', s_col_parallel: 'Parallel',
+            s_col_parallel_tip: 'So viele Prozesse rendern eine Zoomstufe gleichzeitig. Höchstens so viele, wie der Pool QGIS-Worker hat – mehr Prozesse warten nur in seiner Warteschlange.',
             s_add_pool: '+ Pool hinzufügen', s_suggest: 'Von den Instanzen genutzte QGIS Server:',
             s_no_default: 'kein Standard-Pool (jede Instanz nutzt ihren eigenen QGIS Server)',
             s_test: 'Testen', s_testing: 'teste …', s_remove: 'Pool entfernen',
@@ -134,6 +135,8 @@
             s_load_enabled: 'Seeding bei Serverlast pausieren', s_cpu: 'CPU-Grenze (%)', s_p95: 'Grenze Antwortzeit Nutzer p95 (ms)',
             s_resume: 'Fortsetzen nach (s) unter 80 %', s_inv_h: 'Projekte neu einlesen alle (Std., 0 = nie)',
             s_size_min: 'Cache-Größen messen alle (Min.)', s_hist: 'Job-Verlauf aufbewahren (Tage)',
+            s_inst_parallel: 'Parallele Prozesse ohne Seeding-Pool',
+            s_inst_parallel_sub: 'Gilt, wenn ein Job den QGIS Server der Instanz nutzt – also denselben wie die Nutzer. Klein halten (1–2), sonst warten die Nutzer.',
             s_save: 'Einstellungen speichern', s_discard: 'Verwerfen',
             s_saved: 'Gespeichert – der Worker übernimmt die Einstellungen in wenigen Sekunden',
             s_unsaved: 'ungespeicherte Änderungen', s_saved_by: 'zuletzt gespeichert von {u} am {t}',
@@ -238,7 +241,8 @@
             s_pools_help: 'Optional: send the tile requests of seeding jobs to a dedicated QGIS Server pool so the users\' pools stay free. Without a pool each instance uses its own QGIS Server.',
             s_col_url: 'URL', s_col_monitor: 'Dashboard pool',
             s_col_monitor_tip: 'The same pool in the dashboard – its load is then not counted as user load (otherwise seeding would throttle itself)',
-            s_col_default: 'Default', s_col_test: 'Test',
+            s_col_default: 'Default', s_col_test: 'Test', s_col_parallel: 'Parallel',
+            s_col_parallel_tip: 'This many processes render one zoom level at the same time. At most as many as the pool has QGIS workers – more processes only wait in its queue.',
             s_add_pool: '+ Add pool', s_suggest: 'QGIS Servers used by the instances:',
             s_no_default: 'no default pool (each instance uses its own QGIS Server)',
             s_test: 'Test', s_testing: 'testing …', s_remove: 'Remove pool',
@@ -246,6 +250,8 @@
             s_load_enabled: 'Pause seeding while the server is busy', s_cpu: 'CPU limit (%)', s_p95: 'User p95 response time limit (ms)',
             s_resume: 'Resume after (s) below 80 %', s_inv_h: 'Rescan projects every (h, 0 = never)',
             s_size_min: 'Measure cache sizes every (min)', s_hist: 'Keep job history (days)',
+            s_inst_parallel: 'Parallel processes without a seeding pool',
+            s_inst_parallel_sub: 'Used when a job runs on the instance\'s QGIS Server – the same one the users get. Keep it small (1–2), or users have to wait.',
             s_save: 'Save settings', s_discard: 'Discard',
             s_saved: 'Saved – the worker applies the settings within a few seconds',
             s_unsaved: 'unsaved changes', s_saved_by: 'last saved by {u} on {t}',
@@ -268,7 +274,7 @@
     // -----------------------------------------------------------------------
     const S = {
         inited: false, timers: [], csrf: null, status: null, projects: [], sel: null, project: null,
-        viewTms: null, openLayer: null, editor: {}, collapsed: new Set(), jobs: { active: [], recent: [] },
+        viewTms: null, openLayer: null, editor: {}, expanded: new Set(), jobs: { active: [], recent: [] },
         logJob: null, logLastId: 0, estimateSeq: 0, busy: false,
     };
 
@@ -616,7 +622,8 @@
             + '<div class="cache-muted cache-small">' + esc(tr('s_pools_help')) + '</div>';
         if (f.pools.length) {
             h += '<div style="overflow-x:auto;"><table class="cache-set-table"><thead><tr><th>' + esc(tr('s_col_name')) + '</th><th>' + esc(tr('s_col_url'))
-                + '</th><th title="' + esc(tr('s_col_monitor_tip')) + '">' + esc(tr('s_col_monitor')) + ' ⓘ</th><th>' + esc(tr('s_col_default')) + '</th><th>'
+                + '</th><th title="' + esc(tr('s_col_monitor_tip')) + '">' + esc(tr('s_col_monitor')) + ' ⓘ</th>'
+                + '<th title="' + esc(tr('s_col_parallel_tip')) + '">' + esc(tr('s_col_parallel')) + ' ⓘ</th><th>' + esc(tr('s_col_default')) + '</th><th>'
                 + esc(tr('s_col_test')) + '</th><th></th></tr></thead><tbody>';
             f.pools.forEach((p, i) => {
                 const t = S.poolTests[p.url];
@@ -626,6 +633,7 @@
                     + '<td style="min-width:240px;"><input class="cache-input" data-s="pool" data-i="' + i + '" data-k="url" value="' + esc(p.url) + '" spellcheck="false" placeholder="http://127.0.0.1:7004/" aria-label="' + esc(tr('s_col_url')) + '"></td>'
                     + '<td><select class="cache-select" data-s="pool" data-i="' + i + '" data-k="monitor_pool" aria-label="' + esc(tr('s_col_monitor')) + '"><option value="">–</option>'
                     + monitorPools.map((m) => '<option' + (m === p.monitor_pool ? ' selected' : '') + '>' + esc(m) + '</option>').join('') + '</select></td>'
+                    + '<td><input class="cache-input" type="number" min="1" max="64" style="width:70px;" data-s="pool" data-i="' + i + '" data-k="parallel" value="' + esc(p.parallel || 4) + '" title="' + esc(tr('s_col_parallel_tip')) + '" aria-label="' + esc(tr('s_col_parallel')) + '"></td>'
                     + '<td style="text-align:center;"><input type="radio" name="cache-default-pool" data-s="default" data-i="' + i + '"' + (f.default_pool === p.name ? ' checked' : '') + ' aria-label="' + esc(tr('s_col_default')) + '"></td>'
                     + '<td class="cache-small" style="min-width:180px;"><button class="cache-btn icon" data-s="test" data-i="' + i + '"' + (t && t.state === 'running' ? ' disabled' : '') + '>' + esc(tr('s_test')) + '</button> ' + tres + '</td>'
                     + '<td><button class="cache-btn icon danger" data-s="rmpool" data-i="' + i + '" title="' + esc(tr('s_remove')) + '" aria-label="' + esc(tr('s_remove')) + '">✕</button></td></tr>';
@@ -648,6 +656,7 @@
             + '<div class="cache-field"><label>' + esc(tr('s_cpu')) + '</label><input class="cache-input" type="number" min="10" max="100" data-s="op" data-k="cpu_percent" value="' + esc(lp.cpu_percent) + '" aria-label="' + esc(tr('s_cpu')) + '"></div>'
             + '<div class="cache-field"><label>' + esc(tr('s_p95')) + '</label><input class="cache-input" type="number" min="0" data-s="op" data-k="user_p95_ms" value="' + esc(lp.user_p95_ms) + '" aria-label="' + esc(tr('s_p95')) + '"></div>'
             + '<div class="cache-field"><label>' + esc(tr('s_resume')) + '</label><input class="cache-input" type="number" min="0" data-s="op" data-k="resume_after_s" value="' + esc(lp.resume_after_s) + '" aria-label="' + esc(tr('s_resume')) + '"></div>'
+            + '<div class="cache-field"><label>' + esc(tr('s_inst_parallel')) + '</label><input class="cache-input" type="number" min="1" max="64" data-s="op" data-k="instance_parallel" value="' + esc(f.instance_parallel || 1) + '" aria-label="' + esc(tr('s_inst_parallel')) + '"><div class="sub">' + esc(tr('s_inst_parallel_sub')) + '</div></div>'
             + '<div class="cache-field"><label>' + esc(tr('s_inv_h')) + '</label><input class="cache-input" type="number" min="0" data-s="op" data-k="inventory_refresh_hours" value="' + esc(f.inventory_refresh_hours) + '" aria-label="' + esc(tr('s_inv_h')) + '"></div>'
             + '<div class="cache-field"><label>' + esc(tr('s_size_min')) + '</label><input class="cache-input" type="number" min="10" data-s="op" data-k="size_scan_interval_min" value="' + esc(f.size_scan_interval_min) + '" aria-label="' + esc(tr('s_size_min')) + '"></div>'
             + '<div class="cache-field"><label>' + esc(tr('s_hist')) + '</label><input class="cache-input" type="number" min="1" data-s="op" data-k="job_history_days" value="' + esc(f.job_history_days) + '" aria-label="' + esc(tr('s_hist')) + '"></div>'
@@ -680,7 +689,7 @@
                     const p = f.pools[+el.dataset.i];
                     const k = el.dataset.k;
                     if (k === 'name' && f.default_pool === p.name) f.default_pool = el.value.trim();
-                    p[k] = k === 'monitor_pool' ? (el.value || null) : (k === 'name' ? el.value.trim() : el.value.trim());
+                    p[k] = k === 'monitor_pool' ? (el.value || null) : k === 'parallel' ? (el.value === '' ? null : Number(el.value)) : el.value.trim();
                     markDirty(); renderSettingsSummary();
                 });
             } else if (kind === 'default') {
@@ -699,7 +708,7 @@
                     markDirty();
                 });
             } else if (kind === 'addpool') {
-                el.addEventListener('click', () => { f.pools.push({ name: 'Pool ' + (f.pools.length + 1), url: 'http://127.0.0.1:', monitor_pool: null }); markDirty(); renderSettings(); });
+                el.addEventListener('click', () => { f.pools.push({ name: 'Pool ' + (f.pools.length + 1), url: 'http://127.0.0.1:', monitor_pool: null, parallel: 4 }); markDirty(); renderSettings(); });
             } else if (kind === 'rmpool') {
                 el.addEventListener('click', () => {
                     const p = f.pools.splice(+el.dataset.i, 1)[0];
@@ -710,7 +719,7 @@
                 const add = () => {
                     let host = el.dataset.url;
                     try { const u = new URL(el.dataset.url); host = u.host; } catch (e) { /* keep url */ }
-                    f.pools.push({ name: 'Pool ' + host, url: el.dataset.url, monitor_pool: null });
+                    f.pools.push({ name: 'Pool ' + host, url: el.dataset.url, monitor_pool: null, parallel: 4 });
                     markDirty(); renderSettings();
                 };
                 el.addEventListener('click', add);
@@ -812,6 +821,7 @@
     async function selectProject(instance, repository, project) {
         S.sel = { instance, repository, project };
         S.openLayer = null;
+        S.expanded = new Set();     // every project starts with its groups collapsed
         S.project = null;
         renderProjects();
         await loadProject();
@@ -928,7 +938,8 @@
             (nodes || []).forEach((n) => {
                 const key = path + '/' + n.name;
                 const isGroup = n.type === 'group';
-                const collapsed = isGroup && S.collapsed.has(key);
+                // groups are collapsed by default: big projects would need a lot of scrolling
+                const collapsed = isGroup && !S.expanded.has(key);
                 const pad = 'padding-left:' + (8 + depth * 18) + 'px';
                 const caret = isGroup ? '<span class="cache-caret">' + (collapsed ? '▸' : '▾') + '</span>' : '<span class="cache-caret"></span>';
                 const label = esc(n.title || n.name) + (n.title && n.title !== n.name ? ' <span class="cache-muted cache-small">(' + esc(n.name) + ')</span>' : '');
@@ -947,7 +958,10 @@
                         + '<td>' + scheduleCell(n.tile) + '</td></tr>');
                     if (open) rowsHtml.push(editorRow(n));
                 } else if (isGroup) {
-                    rowsHtml.push('<tr class="row group" tabindex="0" data-key="' + esc(key) + '"><td colspan="6" style="' + pad + '">' + caret + label + '</td></tr>');
+                    // a collapsed group tells whether it is worth opening
+                    const nTiles = collapsed ? allTiles(n.children).length : 0;
+                    const count = nTiles ? ' <span class="cache-muted cache-small">· ' + esc(tr('c_tile_layers', { n: nTiles })) + '</span>' : '';
+                    rowsHtml.push('<tr class="row group" tabindex="0" data-key="' + esc(key) + '" aria-expanded="' + (collapsed ? 'false' : 'true') + '"><td colspan="6" style="' + pad + '">' + caret + label + count + '</td></tr>');
                 } else {
                     rowsHtml.push('<tr class="row dim"><td style="' + pad + '">' + caret + label + '</td>'
                         + '<td>' + (n.image_format ? '<span class="cache-badge">' + esc(shortFmt(n.image_format)) + '</span>' : '') + '</td>'
@@ -976,7 +990,7 @@
     }
 
     function toggleGroup(key) {
-        if (S.collapsed.has(key)) S.collapsed.delete(key); else S.collapsed.add(key);
+        if (S.expanded.has(key)) S.expanded.delete(key); else S.expanded.add(key);
         renderTree();
     }
 

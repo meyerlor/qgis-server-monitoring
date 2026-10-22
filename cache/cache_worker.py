@@ -10,11 +10,13 @@ executes the jobs the dashboard puts into the shared cache DB:
   seed     generate tiles for one layer / tile matrix set / level range
   clean    delete the cache of one layer
 
-Only one job runs at a time. Seeding is split into one Lizmap call per zoom
-level, which gives an exact per-level ledger and lets an interrupted job resume
-at the level where it stopped. A running seed job is paused (SIGSTOP) while the
-server is busy or outside the configured time window, and continued (SIGCONT)
-afterwards. Tile requests can be routed to a dedicated QGIS Server pool.
+Only one job runs at a time. Seeding is split into one step per zoom level,
+which gives an exact per-level ledger and lets an interrupted job resume at the
+level where it stopped. A level is rendered by several helper processes in
+parallel (each takes every n-th tile), as many as the pool is set up for. A
+running seed job is paused (SIGSTOP) while the server is busy or outside the
+configured time window, and continued (SIGCONT) afterwards. Tile requests can
+be routed to a dedicated QGIS Server pool.
 
 Instances, pools, time windows and load limits are edited in the dashboard
 (stored in the cache DB). The optional, root-owned config file only sets the
@@ -70,6 +72,7 @@ SIDE_KINDS = ('discover', 'pool_test')   # run in the side thread, never queued 
 
 CAPS_VERSION = 2                # = CAPS_VERSION of lizmap_cache_helper.php; older stored caps are re-read
 MAX_LOGGED_TILE_ERRORS = 50     # per level; further errors are only counted
+MANUAL_RESUME_GRACE_S = 1800    # a manual "continue" overrides the load pause this long
 EARLY_ABORT_ERRORS = 200        # abort a level that fails (almost) every tile
 
 PRIO_CLEAN = 20
@@ -82,7 +85,7 @@ RE_TILE_ERROR = re.compile(r'^Error for tile: ')
 RE_NOT_CACHED = re.compile(r'^Error, tile not cached: ')
 RE_HELPER_ERROR = re.compile(r'^Error: (.*)')
 RE_IDENTITY = re.compile(r'^Seeding (as technical user|anonymously)')
-RE_NOISE = re.compile(r"^The TileMatrixSet '")
+RE_NOISE = re.compile(r"^(The TileMatrixSet '|\d+ tiles to generate for )")   # once per process; the worker logs the level itself
 
 
 def log(msg):
@@ -158,10 +161,17 @@ class Config:
             return None, 'unbekannter Seeding-Pool: %s' % name
         return p['url'], None
 
+    def parallel(self, name):
+        """Seeding processes per level for a job's pool (read at every level, so changes apply live)."""
+        p = self.pool(name or self.default_pool) if (name or self.default_pool) else None
+        return int(p.get('parallel') or 1) if p else int(self.instance_parallel or 1)
+
     def summary(self):
         return {
-            'pools': [{'name': p['name'], 'url': p['url'], 'monitor_pool': p.get('monitor_pool')} for p in self.pools],
+            'pools': [{'name': p['name'], 'url': p['url'], 'monitor_pool': p.get('monitor_pool'),
+                       'parallel': p.get('parallel')} for p in self.pools],
             'default_pool': self.default_pool,
+            'instance_parallel': self.instance_parallel,
             'windows': self.windows,
             'load_pause': self.load_pause,
             'instances': [i['name'] for i in self.instances],
@@ -282,15 +292,67 @@ class Child:
             self.signal(signal.SIGCONT)
             self.stopped = False
 
+
+class ChildGroup:
+    """The helper processes of one step (several for a parallel seeding level),
+    driven together: pause/resume/terminate all, done when all have exited."""
+
+    def __init__(self, arg_lists):
+        self.children = []
+        try:
+            for args in arg_lists:
+                self.children.append(Child(args))
+        except OSError:
+            self.terminate(grace=2)
+            raise
+        self.started = time.time()
+        self.stopped = False
+
+    @property
+    def pids(self):
+        return [c.proc.pid for c in self.children]
+
+    @property
+    def streams(self):
+        return [c.proc.stdout for c in self.children]
+
+    def read_lines(self):
+        """[(child index, line)]"""
+        return [(i, line) for i, c in enumerate(self.children) for line in c.read_lines()]
+
+    def flush_rest(self):
+        return [(i, line) for i, c in enumerate(self.children) for line in c.flush_rest()]
+
+    def poll(self):
+        """None while any process runs, then the first non-zero exit code (or 0)."""
+        codes = [c.poll() for c in self.children]
+        if any(rc is None for rc in codes):
+            return None
+        return next((rc for rc in codes if rc != 0), 0)
+
+    def pause(self):
+        if not self.stopped:
+            for c in self.children:
+                c.pause()
+            self.stopped = True
+
+    def resume(self):
+        if self.stopped:
+            for c in self.children:
+                c.resume()
+            self.stopped = False
+
     def terminate(self, grace=10):
-        self.resume()
-        self.signal(signal.SIGTERM)
+        for c in self.children:
+            c.resume()
+            c.signal(signal.SIGTERM)
         deadline = time.time() + grace
-        while time.time() < deadline and self.proc.poll() is None:
+        while time.time() < deadline and any(c.proc.poll() is None for c in self.children):
             time.sleep(0.2)
-        if self.proc.poll() is None:
-            self.signal(signal.SIGKILL)
-            self.proc.wait(5)
+        for c in self.children:
+            if c.proc.poll() is None:
+                c.signal(signal.SIGKILL)
+                c.proc.wait(5)
 
 
 # ---------------------------------------------------------------------------
@@ -539,6 +601,7 @@ class RunningJob:
         self.last_db_update = 0
         self.last_message = None
         self.load_ok_since = None
+        self.load_override_until = 0   # manual "continue": load pause suspended until then
         self.wms_url = None        # pool override for the helper, None = instance URL
         self.force_caps = False
         self.caps_total = 0
@@ -749,7 +812,7 @@ class Worker:
     def shutdown(self):
         log('stopping')
         if self.cur and self.cur.child:
-            self.sel.unregister(self.cur.child.proc.stdout)
+            self.unregister(self.cur.child)
             self.cur.child.terminate()
             # resume after restart (completed levels are skipped)
             self.update_job(self.cur.id, status='queued', pid=None)
@@ -782,11 +845,16 @@ class Worker:
                     self.update_job(jid, status='paused', pause_reason='user')
             elif action == 'resume':
                 if running and self.cur.child and self.cur.child.stopped:
+                    was_load = self.cur.row.get('pause_reason') == 'load'
                     self.cur.row['pause_reason'] = None
                     self.cur.load_ok_since = None
+                    # otherwise the next load check (a few seconds later, same
+                    # 5-minute p95) would pause the job again right away
+                    self.cur.load_override_until = time.time() + MANUAL_RESUME_GRACE_S
                     self.cur.child.resume()
                     self.update_job(jid, status='running', pause_reason=None)
-                    self.job_log(jid, 'Fortgesetzt (manuell)')
+                    self.job_log(jid, 'Fortgesetzt (manuell)%s' % (
+                        ' – Lastpause für %d min ausgesetzt' % (MANUAL_RESUME_GRACE_S // 60) if was_load else ''))
                 elif r['status'] == 'paused':
                     self.update_job(jid, status='queued', pause_reason=None)
 
@@ -829,6 +897,8 @@ class Worker:
             self.job_log(cur.id, 'Fortgesetzt: Zeitfenster geöffnet')
             return
         if not lp.get('enabled', True):
+            return
+        if time.time() < cur.load_override_until and reason != 'load':
             return
         cpu, p95 = self.cpu_value, self.p95_value
         too_busy = ((cpu is not None and cpu > lp['cpu_percent'])
@@ -1017,10 +1087,10 @@ class Worker:
                 cur.steps.append({'type': 'seed', 'level': z, 'tiles': n})
         self.update_job(cur.id, tiles_total=total, tiles_done=cur.tiles_done_before, errors=cur.errors)
         pool = r['pool'] or self.cfg.default_pool
-        self.job_log(cur.id, 'Seeding %s / %s / %s, %s, Stufen %s–%s, %d Kacheln%s%s, Pool: %s%s' % (
+        self.job_log(cur.id, 'Seeding %s / %s / %s, %s, Stufen %s–%s, %d Kacheln%s%s, Pool: %s%s, %d parallele Prozesse' % (
             r['repository'], r['project'], r['layer'], r['tms'], r['zmin'], r['zmax'], total,
             ', BBox ' + r['bbox'] if r['bbox'] else '', ', neu rechnen (force)' if r['force'] else '',
-            pool or 'Instanz-Standard', (' (%s)' % url) if url else ''))
+            pool or 'Instanz-Standard', (' (%s)' % url) if url else '', self.cfg.parallel(r['pool'])))
         if done:
             self.job_log(cur.id, 'Fortsetzung: Stufen %s bereits erledigt' % ', '.join(str(z) for z in sorted(done)))
 
@@ -1056,36 +1126,50 @@ class Worker:
                     extra.append('--bbox=%s' % r['bbox'])
                 if r['force']:
                     extra.append('--force')
-                args = self.helper_args(r['instance'], cur.wms_url, 'seed', r['repository'], r['project'],
-                                        r['layer'], r['tms'], step['level'], step['level'], *extra)
+                n = max(1, min(self.cfg.parallel(r['pool']), step['tiles']))
+                args = [self.helper_args(r['instance'], cur.wms_url, 'seed', r['repository'], r['project'],
+                                         r['layer'], r['tms'], step['level'], step['level'], *extra,
+                                         *(['--shard=%d/%d' % (k, n)] if n > 1 else []))
+                        for k in range(n)]
+                step['done_by'] = [0] * n
                 step['done'] = 0
                 step['errors'] = 0
                 step['not_cached'] = 0
+                step['next_percent'] = 5
                 step['t0'] = time.time()
                 self.update_job(cur.id, current_level=step['level'])
-                self.job_log(cur.id, '── Stufe %d: %d Kacheln' % (step['level'], step['tiles']))
+                self.job_log(cur.id, '── Stufe %d: %d Kacheln%s' % (
+                    step['level'], step['tiles'], ', %d Prozesse parallel' % n if n > 1 else ''))
             elif step['type'] == 'clean':
                 args = self.helper_args(r['instance'], cur.wms_url, 'clean', r['repository'], r['project'], r['layer'])
             else:
                 raise ValueError('unknown step %s' % step['type'])
-            cur.child = Child(args)
+            cur.child = ChildGroup(args if step['type'] == 'seed' else [args])
         except (OSError, ValueError) as e:
             self.finish('failed', 'Start fehlgeschlagen: %s' % e)
             return
-        self.sel.register(cur.child.proc.stdout, selectors.EVENT_READ)
-        self.update_job(cur.id, pid=cur.child.proc.pid)
+        for stream in cur.child.streams:
+            self.sel.register(stream, selectors.EVENT_READ)
+        self.update_job(cur.id, pid=cur.child.pids[0])
+
+    def unregister(self, group):
+        for stream in group.streams:
+            try:
+                self.sel.unregister(stream)
+            except (KeyError, ValueError):
+                pass
 
     def pump(self):
         cur = self.cur
         if not cur or not cur.child:
             return
-        for line in cur.child.read_lines():
-            self.handle_line(line)
+        for idx, line in cur.child.read_lines():
+            self.handle_line(line, idx)
             if self.cur is not cur:      # job aborted while handling output
                 return
         self.flush_progress()
 
-    def handle_line(self, line):
+    def handle_line(self, line, idx=0):
         cur = self.cur
         st = cur.step['type']
         if st in ('env', 'projects', 'caps'):
@@ -1102,8 +1186,14 @@ class Worker:
         if st == 'seed':
             m = RE_PROGRESS.match(line)
             if m:
-                cur.step['done'] = int(m.group(2))
-                self.job_log(cur.id, line)
+                step = cur.step
+                step['done_by'][idx] = int(m.group(2))
+                step['done'] = sum(step['done_by'])
+                # one progress line for all processes, every 5 % of the level
+                percent = int(step['done'] * 100 / step['tiles']) if step['tiles'] else 100
+                if percent >= step['next_percent']:
+                    step['next_percent'] = percent - percent % 5 + 5
+                    self.job_log(cur.id, 'Fortschritt: %d %%, %d von %d Kacheln' % (percent, step['done'], step['tiles']))
                 return
             if RE_TILE_ERROR.match(line):
                 cur.step['errors'] += 1
@@ -1154,11 +1244,11 @@ class Worker:
                 cur.last_message = 'Zeitüberschreitung nach %d s' % self.cfg.step_timeout_s
             else:
                 return
-        for line in cur.child.flush_rest():
-            self.handle_line(line)
+        for idx, line in cur.child.flush_rest():
+            self.handle_line(line, idx)
             if self.cur is not cur:      # aborted while handling the remaining output
                 return
-        self.sel.unregister(cur.child.proc.stdout)
+        self.unregister(cur.child)
         cur.child = None
         step = cur.step
         try:
@@ -1344,7 +1434,7 @@ class Worker:
     def abort_current(self, status, message):
         cur = self.cur
         if cur.child:
-            self.sel.unregister(cur.child.proc.stdout)
+            self.unregister(cur.child)
             cur.child.terminate()
             cur.child = None
         self.finish(status, message)

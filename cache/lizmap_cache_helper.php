@@ -21,8 +21,10 @@
  *   env                                        JSON: version, cache backend, WebP support
  *   projects                                   JSON: repositories and their projects
  *   capabilities <repo> <project>              JSON: layer tree, cfg layers, tile matrix sets
- *   seed <repo> <project> <layer> <tms> <zmin> <zmax> [--bbox=x1,y1,x2,y2] [--force]
- *                                              text: Lizmap's verbose seeding output
+ *   seed <repo> <project> <layer> <tms> <zmin> <zmax> [--bbox=x1,y1,x2,y2] [--force] [--shard=k/n]
+ *                                              text: seeding progress in Lizmap's output format;
+ *                                              --shard=k/n renders only every n-th tile (from k),
+ *                                              so n processes can seed one level in parallel
  *   clean <repo> <project> [<layer>]           text: Lizmap's cache clean output
  *   wmsping <repo> <project>                   JSON: WMS GetCapabilities of the project at the
  *                                              (overridden) wmsServerURL, with Lizmap's MAP path
@@ -152,18 +154,23 @@ try {
 // Tiles therefore look the way an authorised user sees them — Lizmap shares
 // cached tiles between all authorised users anyway. Layers filtered by login
 // and editable layers are never cached: Lizmap itself forces cached=False for
-// them when it loads a project. Projects without groups stay anonymous.
+// them when it loads a project. Public projects get the same user without any
+// group (it sees what an anonymous visitor sees), so the monitoring dashboard
+// can tell seeding requests from user requests by LIZMAP_USER.
 // ---------------------------------------------------------------------------
 class LizmapCacheSeederContext extends \Lizmap\App\JelixContext
 {
     const SEEDER_LOGIN = 'lizmap-cache-seeder';
 
-    /** @var string[] groups of the technical user; empty = behave like the normal (anonymous) context */
+    /** @var bool false = behave like the normal (anonymous) CLI context */
+    public $active = false;
+
+    /** @var string[] groups of the technical user */
     public $seederGroups = array();
 
     private function seeding()
     {
-        return !empty($this->seederGroups);
+        return $this->active;
     }
 
     public function UserIsConnected()
@@ -307,9 +314,8 @@ function layer_cache_dir($layerName)
 
 function load_project($repoKey, $projectKey)
 {
-    global $seederContext;
-    // groups first: the project must be loaded as the technical user
-    $seederContext->seederGroups = project_seed_groups($repoKey, $projectKey);
+    // identity first: the project must be loaded as the technical user
+    seed_as_technical_user($repoKey, $projectKey);
     $project = \lizmap::getProject($repoKey.'~'.$projectKey);
     if (!$project) {
         throw new \Exception('project not found: '.$repoKey.'~'.$projectKey);
@@ -328,6 +334,13 @@ function as_list($value)
     }
 
     return array_values(array_filter(array_map(function ($g) { return trim((string) $g); }, $value), 'strlen'));
+}
+
+function seed_as_technical_user($repoKey, $projectKey)
+{
+    global $seederContext;
+    $seederContext->seederGroups = project_seed_groups($repoKey, $projectKey);
+    $seederContext->active = true;
 }
 
 /**
@@ -425,6 +438,129 @@ function probe_message($p)
 }
 
 /** Walk <layer-tree-group> recursively: keeps QGIS order and grouping. */
+/**
+ * Lizmap's own seeding loop (WMTSCache::seed(), identical 3.8 – master) for one
+ * layer, with two changes: shard k of n renders only the tiles k, k+n, k+2n, …
+ * of the selection, so n processes split a level evenly (dense and empty areas
+ * alike), and progress is reported every 5 % or 5 s. Output lines keep
+ * Lizmap's format; tile requests are the same WMTSRequest calls, so the tiles
+ * land under the same cache keys as the ones the browser requests.
+ */
+function seed_tiles($project, $layerName, $tmsRef, $zmin, $zmax, $bbox, $forced, $shard, $shards)
+{
+    $caps = \lizmapTiler::getTileCapabilities($project);
+    if ($caps === null || $caps->tileMatrixSetList === null || $caps->layerTileInfoList === null) {
+        fail('The cache is not available! (tile capabilities could not be read)', EXIT_SEED_FAILED);
+    }
+    $layer = null;
+    foreach ($caps->layerTileInfoList as $l) {
+        if ($l->name == $layerName) {
+            $layer = $l;
+
+            break;
+        }
+    }
+    if (!$layer) {
+        fail("The layer '".$layerName."' has not been found!", EXIT_SEED_FAILED);
+    }
+    $tileMatrixSet = null;
+    foreach ($caps->tileMatrixSetList as $t) {
+        if ($t->ref == $tmsRef) {
+            $tileMatrixSet = $t;
+        }
+    }
+    $link = null;
+    foreach ($layer->tileMatrixSetLinkList as $t) {
+        if ($t->ref == $tmsRef) {
+            $link = $t;
+        }
+    }
+    if (!$tileMatrixSet || !$link) {
+        fail("The TileMatrixSet '".$tmsRef."' has not been found!", EXIT_SEED_FAILED);
+    }
+
+    // tile ranges per level, intersected with the bbox exactly like Lizmap does
+    $ranges = array();
+    $total = 0;
+    foreach ($link->tileMatrixLimits as $lim) {
+        if ($lim->id < $zmin || $lim->id > $zmax) {
+            continue;
+        }
+        $r = array('id' => $lim->id, 'minRow' => (int) $lim->minRow, 'maxRow' => (int) $lim->maxRow,
+            'minCol' => (int) $lim->minCol, 'maxCol' => (int) $lim->maxCol);
+        if ($bbox) {
+            $tm = $tileMatrixSet->tileMatrixList[(int) $lim->id];
+            $size = 256.0 * $tm->resolution;
+            $r['minCol'] = max($r['minCol'], (int) floor(($bbox[0] - $tm->left) / $size));
+            $r['maxCol'] = min($r['maxCol'], (int) floor(($bbox[2] - $tm->left) / $size));
+            $r['minRow'] = max($r['minRow'], (int) floor(($tm->top - $bbox[3]) / $size));
+            $r['maxRow'] = min($r['maxRow'], (int) floor(($tm->top - $bbox[1]) / $size));
+        }
+        if ($r['maxRow'] < $r['minRow'] || $r['maxCol'] < $r['minCol']) {
+            continue;
+        }
+        $r['n'] = ($r['maxRow'] - $r['minRow'] + 1) * ($r['maxCol'] - $r['minCol'] + 1);
+        $ranges[] = $r;
+        $total += intdiv($r['n'] - $shard + $shards - 1, $shards);   // tiles of this shard
+    }
+    fwrite(STDOUT, $total.' tiles to generate for "'.$layer->name.'" "'.$tmsRef.'" between "'.$zmin.'" and "'.$zmax.'"'
+        .($shards > 1 ? ' (part '.($shard + 1).' of '.$shards.')' : '').PHP_EOL);
+    fflush(STDOUT);
+
+    // Parallel processes (and Lizmap's own web requests) create the same cache
+    // directories at the same moment; the loser's "File exists" is harmless.
+    set_error_handler(function ($errno, $errstr) {
+        return $errno === E_WARNING && strpos($errstr, 'mkdir(): File exists') !== false;
+    });
+
+    $done = 0;
+    $nextPercent = 5;
+    $lastReport = microtime(true);
+    foreach ($ranges as $r) {
+        $cols = $r['maxCol'] - $r['minCol'] + 1;
+        for ($i = $shard; $i < $r['n']; $i += $shards) {
+            $row = $r['minRow'] + intdiv($i, $cols);
+            $col = $r['minCol'] + $i % $cols;
+            $request = new \Lizmap\Request\WMTSRequest(
+                $project,
+                array(
+                    'service' => 'WMTS',
+                    'version' => '1.0.0',
+                    'request' => 'GetTile',
+                    'layer' => $layer->name,
+                    'format' => $layer->imageFormat,
+                    'TileMatrixSet' => $tmsRef,
+                    'TileMatrix' => $r['id'],
+                    'TileRow' => $row,
+                    'TileCol' => $col,
+                ),
+                \lizmap::getServices()
+            );
+            if ($forced) {
+                $request->setForceRequest(true);
+            }
+            $result = $request->process();
+            $tile = $layer->name.' / '.$tmsRef.' / '.$r['id'].' / '.$row.' / '.$col;
+            if (!preg_match('/^image/', (string) $result->mime)) {
+                fwrite(STDOUT, 'Error for tile: '.$tile.PHP_EOL);
+            }
+            if (!$result->cached) {
+                fwrite(STDOUT, 'Error, tile not cached: '.$tile.PHP_EOL);
+            }
+            ++$done;
+            $percent = floor($done * 100 / $total);
+            if ($percent >= $nextPercent || microtime(true) - $lastReport >= 5 || $done == $total) {
+                fwrite(STDOUT, 'Progression: '.$percent.'%, '.$done.' tiles generated on '.$total.' tiles'.PHP_EOL);
+                fflush(STDOUT);
+                $nextPercent = $percent + 5;
+                $lastReport = microtime(true);
+            }
+        }
+    }
+
+    return EXIT_OK;
+}
+
 function layer_tree_node($xmlNode)
 {
     $children = array();
@@ -639,7 +775,7 @@ try {
 
         case 'seed':
             if (count($positional) < 6) {
-                fail('usage: seed <repo> <project> <layer> <tms> <zmin> <zmax> [--bbox=x1,y1,x2,y2] [--force]', EXIT_USAGE);
+                fail('usage: seed <repo> <project> <layer> <tms> <zmin> <zmax> [--bbox=x1,y1,x2,y2] [--force] [--shard=k/n]', EXIT_USAGE);
             }
             list($repoKey, $projectKey, $layerName, $tms, $zmin, $zmax) = $positional;
             $zmin = filter_var($zmin, FILTER_VALIDATE_INT);
@@ -649,22 +785,26 @@ try {
             }
             $bbox = null;
             if (isset($options['bbox']) && $options['bbox'] !== true) {
-                $bbox = (string) $options['bbox'];
+                $bbox = array_map('trim', explode(',', (string) $options['bbox']));
+                if (count($bbox) != 4 || count(array_filter($bbox, 'is_numeric')) != 4) {
+                    fail('--bbox has to contain 4 numbers separated by comma', EXIT_USAGE);
+                }
+                $bbox = array_map('floatval', $bbox);
             }
-            // WMTSCache loads the project itself: the identity has to be set before
-            $seederContext->seederGroups = project_seed_groups($repoKey, $projectKey);
-            fwrite(STDOUT, ($seederContext->seederGroups
-                ? 'Seeding as technical user '.LizmapCacheSeederContext::SEEDER_LOGIN.' with groups: '.implode(', ', $seederContext->seederGroups)
-                : 'Seeding anonymously (public project, no groups configured)').PHP_EOL);
+            $shard = 0;
+            $shards = 1;
+            if (isset($options['shard'])) {
+                if (!preg_match('#^(\d+)/(\d+)$#', (string) $options['shard'], $m) || (int) $m[2] < 1 || (int) $m[1] >= (int) $m[2]) {
+                    fail('--shard must be k/n with 0 <= k < n', EXIT_USAGE);
+                }
+                $shard = (int) $m[1];
+                $shards = (int) $m[2];
+            }
+            $project = load_project($repoKey, $projectKey);
+            fwrite(STDOUT, 'Seeding as technical user '.LizmapCacheSeederContext::SEEDER_LOGIN.' with '
+                .($seederContext->seederGroups ? 'groups: '.implode(', ', $seederContext->seederGroups) : 'no group (public project)').PHP_EOL);
             fflush(STDOUT);
-            // One layer per call on purpose: WMTSCache::seed() returns after the
-            // first layer when given a list.
-            $cache = new \Lizmap\CliHelpers\WMTSCache(function ($line) {
-                fwrite(STDOUT, $line.PHP_EOL);
-                fflush(STDOUT);
-            });
-            $rc = $cache->seed($repoKey, $projectKey, $layerName, $tms, $zmin, $zmax, $bbox, true, false, !empty($options['force']));
-            exit($rc ? EXIT_SEED_FAILED : EXIT_OK);
+            exit(seed_tiles($project, $layerName, $tms, $zmin, $zmax, $bbox, !empty($options['force']), $shard, $shards));
 
         case 'wmsping':
             // Does the (pool) QGIS Server serve this instance's projects? Same MAP
@@ -685,7 +825,7 @@ try {
                 fail('usage: clean <repo> <project> [<layer>]', EXIT_USAGE);
             }
             // clean() reads the tile capabilities, which needs the identity too
-            $seederContext->seederGroups = project_seed_groups($positional[0], $positional[1]);
+            seed_as_technical_user($positional[0], $positional[1]);
             $cache = new \Lizmap\CliHelpers\WMTSCache(function ($line) {
                 fwrite(STDOUT, $line.PHP_EOL);
                 fflush(STDOUT);
@@ -694,7 +834,7 @@ try {
             exit($rc ? EXIT_ERROR : EXIT_OK);
     }
 } catch (\Throwable $e) {
-    // e.g. DivisionByZeroError inside WMTSCache::seed() when a level has 0 tiles
+    // e.g. a Lizmap class failing while it loads the project or the tile capabilities
     fail(get_class($e).': '.$e->getMessage());
 }
 exit(EXIT_OK);

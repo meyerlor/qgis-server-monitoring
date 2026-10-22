@@ -328,8 +328,9 @@ BOUNDARY_DEFAULTS = {
 
 SETTINGS_DEFAULTS = {
     'instances': [],                     # [{"name", "lizmap_path"}]
-    'pools': [],                         # [{"name", "url", "monitor_pool"}]
+    'pools': [],                         # [{"name", "url", "monitor_pool", "parallel"}]
     'default_pool': None,                # pool name; None = each instance's own wmsServerURL
+    'instance_parallel': 1,              # seeding processes per level without a pool (users' QGIS Server)
     'windows': [],                       # ["20:00-06:00"]; empty = always allowed
     'load_pause': {
         'enabled': True,
@@ -347,6 +348,8 @@ SETTINGS_DEFAULTS = {
 }
 
 NAME_RE = re.compile(r'^[A-Za-z0-9_.-]{1,64}$')
+MAX_PARALLEL = 64            # seeding processes per level
+POOL_PARALLEL_DEFAULT = 4    # a dedicated seeding pool usually has several QGIS workers
 
 
 def parse_window(text):
@@ -444,8 +447,11 @@ def validate_settings(raw, boundaries, check_files=True):
             mp = p.get('monitor_pool') or None
             if mp is not None and not NAME_RE.match(str(mp)):
                 raise ValueError('Dashboard-Pool ungültig: %s' % mp)
+            par = p.get('parallel')
+            par = _num(POOL_PARALLEL_DEFAULT if par in (None, '') else par, 'Parallele Prozesse (%s)' % name,
+                       1, MAX_PARALLEL, int)
             pool_names.add(name)
-            s['pools'].append({'name': name, 'url': url, 'monitor_pool': mp})
+            s['pools'].append({'name': name, 'url': url, 'monitor_pool': mp, 'parallel': par})
         except (ValueError, AttributeError) as e:
             errors.append(str(e))
 
@@ -477,7 +483,8 @@ def validate_settings(raw, boundaries, check_files=True):
     wp = lp.get('watch_pools')
     s['load_pause']['watch_pools'] = [str(x) for x in wp] if isinstance(wp, list) and wp else None
 
-    for key, name, lo, hi in (('inventory_refresh_hours', 'Inventar-Intervall', 0, 24 * 30),
+    for key, name, lo, hi in (('instance_parallel', 'Parallele Prozesse ohne Pool', 1, MAX_PARALLEL),
+                              ('inventory_refresh_hours', 'Inventar-Intervall', 0, 24 * 30),
                               ('size_scan_interval_min', 'Größenmessung', 10, 60 * 24 * 7),
                               ('job_history_days', 'Job-Verlauf', 1, 365)):
         if key in raw:
