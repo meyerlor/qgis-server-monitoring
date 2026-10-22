@@ -371,6 +371,7 @@ Copy the new files (step 1), restart the dashboard and `systemctl restart lizmap
 - **Worker "offline"** — `systemctl status lizmap-cache-worker` and `journalctl -u lizmap-cache-worker -n 50`.
 - **Self-check** at any time: `sudo -u www-data python3 /opt/monitoring/cache/cache_worker.py --config /etc/lizmap-cache-worker.json check`
 - **"attempt to write a readonly database"** — a user is missing from the `lizcache` group, or a process was not restarted after being added: run step 2 again and restart both services.
+- **Seeding covers only part of a layer / an old area after an upload** — Lizmap keeps the tile info separately for the command line and the web (`temp/lizmap/console` vs `temp/lizmap/www`). If it is read while QGIS Server still has the previous version of a big project loaded, the command line keeps the old tile limits. The helper now computes them fresh on every project read, and a project read within 15 minutes of its upload is read again automatically afterwards; "Alle neu analysieren" also fixes it. If the web map itself lacks tiles outside some area, check the layer's extent in GetCapabilities: with "trust project" QGIS Server uses the extent stored in the `.qgs`, and Lizmap only offers tiles inside it.
 - **Pool test fails with an invalid GetCapabilities** — the pool cannot open the instance's projects (different project root / search paths than the pool Lizmap normally uses); give it the same configuration.
 
 Notes:

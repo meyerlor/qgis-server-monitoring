@@ -340,6 +340,36 @@ function as_list($value)
     return array_values(array_filter(array_map(function ($g) { return trim((string) $g); }, $value), 'strlen'));
 }
 
+/**
+ * Lizmap keeps the tile info of a project (lizmapTiler: <repo>_<project>_WMTS_*)
+ * and the WMS GetCapabilities it is computed from (OGCRequest, project related
+ * cache) for an hour, separately per entry point (temp/lizmap/console for the
+ * CLI, temp/lizmap/www for the web), and only recomputes them when .qgs/.cfg
+ * change. Read right after an upload, while QGIS Server still had the old
+ * project loaded, the CLI keeps the old tile limits with the new file dates:
+ * seeding then covers the old area although the web map already uses the new
+ * one. Forget this process' copies so they are computed from QGIS Server now.
+ * Only the CLI cache is touched, never the web's or the tiles.
+ */
+function forget_cli_tile_info($project)
+{
+    global $seederContext;
+    $cacheId = \jCache::normalizeKey($project->getRepository()->getKey().'_'.$project->getKey().'_WMTS');
+    foreach (array('_hash', '_tilematrixsetlist', '_layers') as $suffix) {
+        \jCache::delete($cacheId.$suffix);
+    }
+    // key as built by OGCRequest::process_getcapabilities() for the GetCapabilities
+    // lizmapTiler sends (service WMS, version set to 1.3.0 by WMSRequest)
+    $key = session_id().'-WMS-1.3.0';
+    if ($seederContext->UserIsConnected()) {
+        $key .= '-'.$seederContext->getUserSession()->login;
+    }
+    $handler = $project->getCacheHandler();
+    $rp = new \ReflectionProperty($handler, 'fileKey');
+    $rp->setAccessible(true);
+    $seederContext->clearCache($rp->getValue($handler).'.getcapabilities-'.sha1($key), 'qgisprojects');
+}
+
 function seed_as_technical_user($repoKey, $projectKey)
 {
     global $seederContext;
@@ -718,7 +748,8 @@ try {
                 );
             }
 
-            // Tile matrix sets + per-layer tile limits, as Lizmap computes them
+            // Tile matrix sets + per-layer tile limits, as Lizmap computes them now
+            forget_cli_tile_info($project);
             $tileCaps = \lizmapTiler::getTileCapabilities($project);
             $tmsList = array();
             $tileLayers = array();

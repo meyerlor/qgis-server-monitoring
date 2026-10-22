@@ -71,6 +71,7 @@ FILE_DEFAULTS = {
 SIDE_KINDS = ('discover', 'pool_test')   # run in the side thread, never queued behind seeding
 
 CAPS_VERSION = 2                # = CAPS_VERSION of lizmap_cache_helper.php; older stored caps are re-read
+UPLOAD_SETTLE_S = 900           # a project read this soon after its upload may still be QGIS Server's old version
 MAX_LOGGED_TILE_ERRORS = 50     # per level; further errors are only counted
 MANUAL_RESUME_GRACE_S = 1800    # a manual "continue" overrides the load pause this long
 EARLY_ABORT_ERRORS = 200        # abort a level that fails (almost) every tile
@@ -91,6 +92,14 @@ RE_NOISE = re.compile(r"^(The TileMatrixSet '|\d+ tiles to generate for )")   # 
 
 def log(msg):
     print('[%s] %s' % (cdb.now_str(), msg), flush=True)
+
+
+def read_right_after_upload(row):
+    """Stored capabilities read within UPLOAD_SETTLE_S of the project's upload (maybe still the old version)."""
+    read = cdb.parse_time(row['refreshed_at']) if row['refreshed_at'] else None
+    if not read or not row['caps_json']:
+        return False
+    return read.timestamp() - max(row['qgs_mtime'] or 0, row['cfg_mtime'] or 0) < UPLOAD_SETTLE_S
 
 
 def caps_version(caps_json):
@@ -636,6 +645,7 @@ class Worker:
         self.started_at = cdb.now_str()
         self.stop_requested = False
         self.last = {'heartbeat': 0, 'schedule': 0, 'load': 0, 'maintenance': 0, 'size_full': 0, 'settings': 0}
+        self.recheck = {}          # instance -> epoch: re-read projects that were read right after an upload
         self.cpu_value = None
         self.p95_value = None
         self.scanner = SizeScanner(fcfg.db_path)
@@ -801,6 +811,7 @@ class Worker:
             self.last['schedule'] = now
             self.run_scheduler()
             self.maybe_auto_refresh()
+            self.run_rechecks()
         if now - self.last['maintenance'] >= 3600:
             self.last['maintenance'] = now
             self.maintenance()
@@ -928,6 +939,16 @@ class Worker:
                 cur.load_ok_since = None
 
     # -- scheduling ----------------------------------------------------------
+    def run_rechecks(self):
+        """Projects read right after an upload are read once more when QGIS Server surely has the new version."""
+        for inst, due in list(self.recheck.items()):
+            if time.time() < due or self.active_job('refresh'):
+                continue
+            del self.recheck[inst]
+            if self.cfg.instance(inst):
+                self.enqueue({'kind': 'refresh', 'instance': inst, 'priority': PRIO_REFRESH,
+                              'created_by': 'Worker (nach Upload)'})
+
     def run_scheduler(self):
         now = datetime.now()
         rows = self.db('SELECT * FROM schedules WHERE enabled = 1').fetchall()
@@ -1351,7 +1372,7 @@ class Worker:
                 for p in repo.get('projects') or []:
                     key = (repo['key'], p['key'])
                     seen.add(key)
-                    old = self.db('SELECT qgs_mtime, cfg_mtime, caps_json, error FROM projects '
+                    old = self.db('SELECT qgs_mtime, cfg_mtime, caps_json, error, refreshed_at FROM projects '
                                   'WHERE instance=? AND repository=? AND project=?',
                                   (inst, repo['key'], p['key'])).fetchone()
                     self.db('INSERT INTO projects(instance, repository, project, repo_label, qgs_path, qgs_mtime, cfg_mtime) '
@@ -1360,7 +1381,8 @@ class Worker:
                             (inst, repo['key'], p['key'], repo.get('label'), p['qgs_path'], p['qgs_mtime'], p['cfg_mtime']))
                     changed = (not old or old['caps_json'] is None or old['error']
                                or old['qgs_mtime'] != p['qgs_mtime'] or old['cfg_mtime'] != p['cfg_mtime']
-                               or caps_version(old['caps_json']) < CAPS_VERSION)
+                               or caps_version(old['caps_json']) < CAPS_VERSION
+                               or read_right_after_upload(old))
                     if changed or cur.force_caps:
                         cur.steps.append({'type': 'caps', 'instance': inst, 'repository': repo['key'],
                                           'project': p['key'], 'qgs_mtime': p['qgs_mtime'], 'cfg_mtime': p['cfg_mtime']})
@@ -1395,6 +1417,14 @@ class Worker:
             elif n_tile:
                 self.job_log(cur.id, '%s/%s: %d cachefähige Layer%s' % (step['repository'], step['project'], n_tile, as_groups))
             self.enqueue_size_scans(*key)
+            age = time.time() - max(step['qgs_mtime'] or 0, step['cfg_mtime'] or 0)
+            if age < UPLOAD_SETTLE_S:
+                # QGIS Server may still have served the previous version of the project
+                due = time.time() + UPLOAD_SETTLE_S - age
+                self.recheck[inst] = max(self.recheck.get(inst, 0), due)
+                self.job_log(cur.id, '%s/%s: vor %d min hochgeladen – wird um %s noch einmal gelesen (QGIS Server '
+                             'lädt große Projekte erst nach und nach neu)'
+                             % (step['repository'], step['project'], age // 60, datetime.fromtimestamp(due).strftime('%H:%M')))
         cur.last_message = None
         done = (self.db('SELECT tiles_done FROM jobs WHERE id = ?', (cur.id,)).fetchone()['tiles_done'] or 0) + 1
         self.update_job(cur.id, tiles_done=done)
