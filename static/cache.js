@@ -135,6 +135,8 @@
             s_load_enabled: 'Seeding bei Serverlast pausieren', s_cpu: 'CPU-Grenze (%)', s_p95: 'Grenze Antwortzeit Nutzer p95 (ms)',
             s_resume: 'Fortsetzen nach (s) unter 80 %', s_inv_h: 'Projekte neu einlesen alle (Std., 0 = nie)',
             s_size_min: 'Cache-Größen messen alle (Min.)', s_hist: 'Job-Verlauf aufbewahren (Tage)',
+            s_tile_timeout: 'Timeout pro Kachel (s)',
+            s_tile_timeout_sub: 'So lange wartet Lizmap beim Seeding auf eine Kachel (Standard 120). Ohne diese Einstellung bricht Lizmap auf der Kommandozeile schon nach 10 s ab.',
             s_inst_parallel: 'Parallele Prozesse ohne Seeding-Pool',
             s_inst_parallel_sub: 'Gilt, wenn ein Job den QGIS Server der Instanz nutzt – also denselben wie die Nutzer. Klein halten (1–2), sonst warten die Nutzer.',
             s_save: 'Einstellungen speichern', s_discard: 'Verwerfen',
@@ -250,6 +252,8 @@
             s_load_enabled: 'Pause seeding while the server is busy', s_cpu: 'CPU limit (%)', s_p95: 'User p95 response time limit (ms)',
             s_resume: 'Resume after (s) below 80 %', s_inv_h: 'Rescan projects every (h, 0 = never)',
             s_size_min: 'Measure cache sizes every (min)', s_hist: 'Keep job history (days)',
+            s_tile_timeout: 'Timeout per tile (s)',
+            s_tile_timeout_sub: 'How long Lizmap waits for one tile while seeding (default 120). Without this setting Lizmap gives up after 10 s on the command line.',
             s_inst_parallel: 'Parallel processes without a seeding pool',
             s_inst_parallel_sub: 'Used when a job runs on the instance\'s QGIS Server – the same one the users get. Keep it small (1–2), or users have to wait.',
             s_save: 'Save settings', s_discard: 'Discard',
@@ -656,6 +660,7 @@
             + '<div class="cache-field"><label>' + esc(tr('s_cpu')) + '</label><input class="cache-input" type="number" min="10" max="100" data-s="op" data-k="cpu_percent" value="' + esc(lp.cpu_percent) + '" aria-label="' + esc(tr('s_cpu')) + '"></div>'
             + '<div class="cache-field"><label>' + esc(tr('s_p95')) + '</label><input class="cache-input" type="number" min="0" data-s="op" data-k="user_p95_ms" value="' + esc(lp.user_p95_ms) + '" aria-label="' + esc(tr('s_p95')) + '"></div>'
             + '<div class="cache-field"><label>' + esc(tr('s_resume')) + '</label><input class="cache-input" type="number" min="0" data-s="op" data-k="resume_after_s" value="' + esc(lp.resume_after_s) + '" aria-label="' + esc(tr('s_resume')) + '"></div>'
+            + '<div class="cache-field"><label>' + esc(tr('s_tile_timeout')) + '</label><input class="cache-input" type="number" min="10" max="3600" data-s="op" data-k="tile_timeout_s" value="' + esc(f.tile_timeout_s || 120) + '" aria-label="' + esc(tr('s_tile_timeout')) + '"><div class="sub">' + esc(tr('s_tile_timeout_sub')) + '</div></div>'
             + '<div class="cache-field"><label>' + esc(tr('s_inst_parallel')) + '</label><input class="cache-input" type="number" min="1" max="64" data-s="op" data-k="instance_parallel" value="' + esc(f.instance_parallel || 1) + '" aria-label="' + esc(tr('s_inst_parallel')) + '"><div class="sub">' + esc(tr('s_inst_parallel_sub')) + '</div></div>'
             + '<div class="cache-field"><label>' + esc(tr('s_inv_h')) + '</label><input class="cache-input" type="number" min="0" data-s="op" data-k="inventory_refresh_hours" value="' + esc(f.inventory_refresh_hours) + '" aria-label="' + esc(tr('s_inv_h')) + '"></div>'
             + '<div class="cache-field"><label>' + esc(tr('s_size_min')) + '</label><input class="cache-input" type="number" min="10" data-s="op" data-k="size_scan_interval_min" value="' + esc(f.size_scan_interval_min) + '" aria-label="' + esc(tr('s_size_min')) + '"></div>'

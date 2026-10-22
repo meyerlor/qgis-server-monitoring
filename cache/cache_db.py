@@ -331,6 +331,7 @@ SETTINGS_DEFAULTS = {
     'pools': [],                         # [{"name", "url", "monitor_pool", "parallel"}]
     'default_pool': None,                # pool name; None = each instance's own wmsServerURL
     'instance_parallel': 1,              # seeding processes per level without a pool (users' QGIS Server)
+    'tile_timeout_s': 120,               # how long Lizmap waits for one tile while seeding
     'windows': [],                       # ["20:00-06:00"]; empty = always allowed
     'load_pause': {
         'enabled': True,
@@ -484,6 +485,7 @@ def validate_settings(raw, boundaries, check_files=True):
     s['load_pause']['watch_pools'] = [str(x) for x in wp] if isinstance(wp, list) and wp else None
 
     for key, name, lo, hi in (('instance_parallel', 'Parallele Prozesse ohne Pool', 1, MAX_PARALLEL),
+                              ('tile_timeout_s', 'Timeout pro Kachel', 10, 3600),
                               ('inventory_refresh_hours', 'Inventar-Intervall', 0, 24 * 30),
                               ('size_scan_interval_min', 'Größenmessung', 10, 60 * 24 * 7),
                               ('job_history_days', 'Job-Verlauf', 1, 365)):

@@ -74,6 +74,7 @@ CAPS_VERSION = 2                # = CAPS_VERSION of lizmap_cache_helper.php; old
 MAX_LOGGED_TILE_ERRORS = 50     # per level; further errors are only counted
 MANUAL_RESUME_GRACE_S = 1800    # a manual "continue" overrides the load pause this long
 EARLY_ABORT_ERRORS = 200        # abort a level that fails (almost) every tile
+STREAK_ABORT_ERRORS = 20        # abort after this many failed tiles in a row (at least 5 per process)
 
 PRIO_CLEAN = 20
 PRIO_MANUAL = 10
@@ -172,6 +173,7 @@ class Config:
                        'parallel': p.get('parallel')} for p in self.pools],
             'default_pool': self.default_pool,
             'instance_parallel': self.instance_parallel,
+            'tile_timeout_s': self.tile_timeout_s,
             'windows': self.windows,
             'load_pause': self.load_pause,
             'instances': [i['name'] for i in self.instances],
@@ -1126,6 +1128,7 @@ class Worker:
                     extra.append('--bbox=%s' % r['bbox'])
                 if r['force']:
                     extra.append('--force')
+                extra.append('--tile-timeout=%d' % self.cfg.tile_timeout_s)
                 n = max(1, min(self.cfg.parallel(r['pool']), step['tiles']))
                 args = [self.helper_args(r['instance'], cur.wms_url, 'seed', r['repository'], r['project'],
                                          r['layer'], r['tms'], step['level'], step['level'], *extra,
@@ -1135,6 +1138,8 @@ class Worker:
                 step['done'] = 0
                 step['errors'] = 0
                 step['not_cached'] = 0
+                step['ok_max'] = 0
+                step['errors_at_last_ok'] = 0
                 step['next_percent'] = 5
                 step['t0'] = time.time()
                 self.update_job(cur.id, current_level=step['level'])
@@ -1189,6 +1194,12 @@ class Worker:
                 step = cur.step
                 step['done_by'][idx] = int(m.group(2))
                 step['done'] = sum(step['done_by'])
+                # errors are printed before the progress line of their tile, so
+                # done - errors only underestimates the successes
+                ok = step['done'] - step['errors']
+                if ok > step['ok_max']:
+                    step['ok_max'] = ok
+                    step['errors_at_last_ok'] = step['errors']
                 # one progress line for all processes, every 5 % of the level
                 percent = int(step['done'] * 100 / step['tiles']) if step['tiles'] else 100
                 if percent >= step['next_percent']:
@@ -1207,6 +1218,17 @@ class Worker:
                 if n >= EARLY_ABORT_ERRORS and n >= 0.9 * max(cur.step['done'], n):
                     cur.last_message = ('%d Kachelfehler in Stufe %d ohne erfolgreiche Kacheln – '
                                         'ist der QGIS-Pool erreichbar?' % (n, cur.step['level']))
+                    self.job_log(cur.id, 'Abbruch: ' + cur.last_message, 'error')
+                    self.abort_current('failed', cur.last_message)
+                    return
+                # A pool that hangs on this project (e.g. cannot reach its database)
+                # fails every NEW tile, while tiles already in the cache still succeed
+                # and keep the ratio above low. Count the failures since the last success.
+                streak = n - cur.step['errors_at_last_ok']
+                if streak >= max(STREAK_ABORT_ERRORS, 5 * len(cur.step['done_by'])):
+                    cur.last_message = ('%d Kacheln in Folge fehlgeschlagen in Stufe %d – rendert der QGIS-Pool dieses '
+                                        'Projekt? (der Pool-Test prüft nur GetCapabilities, nicht das Zeichnen der Daten)'
+                                        % (streak, cur.step['level']))
                     self.job_log(cur.id, 'Abbruch: ' + cur.last_message, 'error')
                     self.abort_current('failed', cur.last_message)
                 return
