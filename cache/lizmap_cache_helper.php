@@ -22,9 +22,11 @@
  *   projects                                   JSON: repositories and their projects
  *   capabilities <repo> <project>              JSON: layer tree, cfg layers, tile matrix sets
  *   seed <repo> <project> <layer> <tms> <zmin> <zmax> [--bbox=x1,y1,x2,y2] [--force] [--shard=k/n]
- *                                              text: seeding progress in Lizmap's output format;
+ *        [--tile-timeout=s]                    text: seeding progress in Lizmap's output format;
  *                                              --shard=k/n renders only every n-th tile (from k),
- *                                              so n processes can seed one level in parallel
+ *                                              so n processes can seed one level in parallel;
+ *                                              --tile-timeout: seconds Lizmap waits for one tile
+ *                                              (default 120)
  *   clean <repo> <project> [<layer>]           text: Lizmap's cache clean output
  *   wmsping <repo> <project>                   JSON: WMS GetCapabilities of the project at the
  *                                              (overridden) wmsServerURL, with Lizmap's MAP path
@@ -40,6 +42,8 @@ const EXIT_OK = 0;
 const EXIT_USAGE = 2;
 const EXIT_ERROR = 1;
 const EXIT_SEED_FAILED = 3;
+
+const TILE_TIMEOUT_DEFAULT = 120;
 
 ini_set('display_errors', 'stderr');
 error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
@@ -445,8 +449,15 @@ function probe_message($p)
  * alike), and progress is reported every 5 % or 5 s. Output lines keep
  * Lizmap's format; tile requests are the same WMTSRequest calls, so the tiles
  * land under the same cache keys as the ones the browser requests.
+ *
+ * Lizmap's HTTP timeout is max(10, max_execution_time - 5) seconds (3.8 – 3.10;
+ * newer code uses max(10, default_socket_timeout)). The CLI has
+ * max_execution_time 0, so every tile slower than 10 s would fail (Lizmap's
+ * own wmts:cache:seed has the same limit). Both values are set to give Lizmap
+ * $tileTimeout seconds; set_time_limit() before each tile also restarts PHP's
+ * clock, so the limit applies to one tile, never to the whole run.
  */
-function seed_tiles($project, $layerName, $tmsRef, $zmin, $zmax, $bbox, $forced, $shard, $shards)
+function seed_tiles($project, $layerName, $tmsRef, $zmin, $zmax, $bbox, $forced, $shard, $shards, $tileTimeout)
 {
     $caps = \lizmapTiler::getTileCapabilities($project);
     if ($caps === null || $caps->tileMatrixSetList === null || $caps->layerTileInfoList === null) {
@@ -513,6 +524,8 @@ function seed_tiles($project, $layerName, $tmsRef, $zmin, $zmax, $bbox, $forced,
         return $errno === E_WARNING && strpos($errstr, 'mkdir(): File exists') !== false;
     });
 
+    ini_set('default_socket_timeout', (string) $tileTimeout);
+
     $done = 0;
     $nextPercent = 5;
     $lastReport = microtime(true);
@@ -521,6 +534,7 @@ function seed_tiles($project, $layerName, $tmsRef, $zmin, $zmax, $bbox, $forced,
         for ($i = $shard; $i < $r['n']; $i += $shards) {
             $row = $r['minRow'] + intdiv($i, $cols);
             $col = $r['minCol'] + $i % $cols;
+            set_time_limit($tileTimeout + 5);
             $request = new \Lizmap\Request\WMTSRequest(
                 $project,
                 array(
@@ -800,11 +814,18 @@ try {
                 $shard = (int) $m[1];
                 $shards = (int) $m[2];
             }
+            $tileTimeout = TILE_TIMEOUT_DEFAULT;
+            if (isset($options['tile-timeout'])) {
+                $tileTimeout = filter_var($options['tile-timeout'], FILTER_VALIDATE_INT, array('options' => array('min_range' => 10, 'max_range' => 3600)));
+                if ($tileTimeout === false) {
+                    fail('--tile-timeout must be an integer between 10 and 3600', EXIT_USAGE);
+                }
+            }
             $project = load_project($repoKey, $projectKey);
             fwrite(STDOUT, 'Seeding as technical user '.LizmapCacheSeederContext::SEEDER_LOGIN.' with '
                 .($seederContext->seederGroups ? 'groups: '.implode(', ', $seederContext->seederGroups) : 'no group (public project)').PHP_EOL);
             fflush(STDOUT);
-            exit(seed_tiles($project, $layerName, $tms, $zmin, $zmax, $bbox, !empty($options['force']), $shard, $shards));
+            exit(seed_tiles($project, $layerName, $tms, $zmin, $zmax, $bbox, !empty($options['force']), $shard, $shards, $tileTimeout));
 
         case 'wmsping':
             // Does the (pool) QGIS Server serve this instance's projects? Same MAP
