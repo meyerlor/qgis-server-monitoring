@@ -359,6 +359,10 @@ response_times = {pool: deque(maxlen=RESPONSE_TIMES_MAXLEN) for pool in POOL_NAM
 # Request details tracking - stores info about ongoing requests by request_id
 current_requests = {pool: {} for pool in POOL_NAMES}
 
+# LIZMAP_USER of the cache worker's seeding requests (LizmapCacheSeederContext::SEEDER_LOGIN
+# in cache/lizmap_cache_helper.php)
+CACHE_SEEDER_USER = 'lizmap-cache-seeder'
+
 # --- Nginx edit correlation state ------------------------------------------
 # Last LIZMAP_USER seen in the QGIS Server log, keyed for correlation with
 # nginx edits (which carry no username). Value: (user, unix_ts).
@@ -566,19 +570,27 @@ def parse_qgis_log_line(line, log_name):
             
             # Store the response time with timestamp
             if response_time > 0:
-                response_times[log_name].append((now, response_time))
                 log_stats[log_name]['requests_total'] += 1
-                
+
                 # Find the most recent tracking key for this request_id
                 matching_keys = [k for k in current_requests[log_name].keys() if k.startswith(f"{request_id}_")]
-                
+
                 debug_log(f"DEBUG [{log_name}] Found {len(matching_keys)} matching keys for [{request_id}]")
-                
+
+                # Get the most recent one (closest to "finished" time)
+                tracking_key = max(matching_keys, key=lambda k: int(k.split('_')[1])) if matching_keys else None
+                details = current_requests[log_name][tracking_key] if tracking_key else None
+
+                # Tiles rendered for the cache worker are not user traffic: they
+                # must not raise the users' p95 (the worker would pause itself),
+                # nor appear in the usage log, statistics or user attribution.
+                if details and details.get('user') == CACHE_SEEDER_USER:
+                    del current_requests[log_name][tracking_key]
+                    return True
+
+                response_times[log_name].append((now, response_time))
+
                 if matching_keys:
-                    # Get the most recent one (closest to "finished" time)
-                    tracking_key = max(matching_keys, key=lambda k: int(k.split('_')[1]))
-                    details = current_requests[log_name][tracking_key]
-                    
                     debug_log(f"DEBUG [{log_name}] Using key: {tracking_key}")
                     debug_log(f"DEBUG [{log_name}] Details: MAP={details.get('map')}, USER={details.get('user')}, TYPE={details.get('request_type')}")
 
