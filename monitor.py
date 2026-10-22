@@ -61,6 +61,10 @@ SECRET_KEY = os.environ.get('MONITORING_SECRET_KEY') or secrets.token_hex(32)
 # Path to the SQLite database file (will be created if it does not exist)
 DB_PATH = '/opt/monitoring/monitoring.db'
 
+# LIZMAP_USER of the cache worker's seeding requests (LizmapCacheSeederContext::SEEDER_LOGIN
+# in cache/lizmap_cache_helper.php)
+CACHE_SEEDER_USER = 'lizmap-cache-seeder'
+
 # -- Data Retention ----------------------------------------------------------
 # How long to keep request data in the database (in days)
 REQUEST_RETENTION_DAYS = 180
@@ -268,6 +272,14 @@ def init_database():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_pool ON usage_log(pool)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_type ON usage_log(request_type)')
 
+    # Tile requests of the cache worker are not user traffic. They are filtered
+    # out when parsed (parse_qgis_log_line); rows stored before that filter
+    # existed would skew the statistics, so they are dropped here.
+    for table in ('requests', 'usage_log'):
+        cursor.execute(f'DELETE FROM {table} WHERE user = ?', (CACHE_SEEDER_USER,))
+        if cursor.rowcount:
+            print(f"Removed {cursor.rowcount} cache seeding rows from {table}")
+
     conn.commit()
     conn.close()
     debug_log(f"Database initialized at {DB_PATH}")
@@ -358,10 +370,6 @@ response_times = {pool: deque(maxlen=RESPONSE_TIMES_MAXLEN) for pool in POOL_NAM
 
 # Request details tracking - stores info about ongoing requests by request_id
 current_requests = {pool: {} for pool in POOL_NAMES}
-
-# LIZMAP_USER of the cache worker's seeding requests (LizmapCacheSeederContext::SEEDER_LOGIN
-# in cache/lizmap_cache_helper.php)
-CACHE_SEEDER_USER = 'lizmap-cache-seeder'
 
 # --- Nginx edit correlation state ------------------------------------------
 # Last LIZMAP_USER seen in the QGIS Server log, keyed for correlation with
