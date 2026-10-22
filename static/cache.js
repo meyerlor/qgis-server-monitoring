@@ -274,7 +274,7 @@
     // -----------------------------------------------------------------------
     const S = {
         inited: false, timers: [], csrf: null, status: null, projects: [], sel: null, project: null,
-        viewTms: null, openLayer: null, editor: {}, collapsed: new Set(), jobs: { active: [], recent: [] },
+        viewTms: null, openLayer: null, editor: {}, expanded: new Set(), jobs: { active: [], recent: [] },
         logJob: null, logLastId: 0, estimateSeq: 0, busy: false,
     };
 
@@ -821,6 +821,7 @@
     async function selectProject(instance, repository, project) {
         S.sel = { instance, repository, project };
         S.openLayer = null;
+        S.expanded = new Set();     // every project starts with its groups collapsed
         S.project = null;
         renderProjects();
         await loadProject();
@@ -937,7 +938,8 @@
             (nodes || []).forEach((n) => {
                 const key = path + '/' + n.name;
                 const isGroup = n.type === 'group';
-                const collapsed = isGroup && S.collapsed.has(key);
+                // groups are collapsed by default: big projects would need a lot of scrolling
+                const collapsed = isGroup && !S.expanded.has(key);
                 const pad = 'padding-left:' + (8 + depth * 18) + 'px';
                 const caret = isGroup ? '<span class="cache-caret">' + (collapsed ? '▸' : '▾') + '</span>' : '<span class="cache-caret"></span>';
                 const label = esc(n.title || n.name) + (n.title && n.title !== n.name ? ' <span class="cache-muted cache-small">(' + esc(n.name) + ')</span>' : '');
@@ -956,7 +958,10 @@
                         + '<td>' + scheduleCell(n.tile) + '</td></tr>');
                     if (open) rowsHtml.push(editorRow(n));
                 } else if (isGroup) {
-                    rowsHtml.push('<tr class="row group" tabindex="0" data-key="' + esc(key) + '"><td colspan="6" style="' + pad + '">' + caret + label + '</td></tr>');
+                    // a collapsed group tells whether it is worth opening
+                    const nTiles = collapsed ? allTiles(n.children).length : 0;
+                    const count = nTiles ? ' <span class="cache-muted cache-small">· ' + esc(tr('c_tile_layers', { n: nTiles })) + '</span>' : '';
+                    rowsHtml.push('<tr class="row group" tabindex="0" data-key="' + esc(key) + '" aria-expanded="' + (collapsed ? 'false' : 'true') + '"><td colspan="6" style="' + pad + '">' + caret + label + count + '</td></tr>');
                 } else {
                     rowsHtml.push('<tr class="row dim"><td style="' + pad + '">' + caret + label + '</td>'
                         + '<td>' + (n.image_format ? '<span class="cache-badge">' + esc(shortFmt(n.image_format)) + '</span>' : '') + '</td>'
@@ -985,7 +990,7 @@
     }
 
     function toggleGroup(key) {
-        if (S.collapsed.has(key)) S.collapsed.delete(key); else S.collapsed.add(key);
+        if (S.expanded.has(key)) S.expanded.delete(key); else S.expanded.add(key);
         renderTree();
     }
 
